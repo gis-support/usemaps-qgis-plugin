@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/plugins/gisbox-plugin" >
+        <file>connected.svg</file>
+        <file>connection.svg</file>
+        <file>dodaj_warstwy.svg</file>
+        <file>refresh.svg</file>
+        <file>digitization.svg</file>
+        <file>connected.png</file>
+        <file>disconnected.png</file>
+        <file>widget_settings.svg</file>
+        <file>widget_connect.svg</file>
+        <file>widget_disconnect.svg</file>
+    </qresource>
+</RCC>
