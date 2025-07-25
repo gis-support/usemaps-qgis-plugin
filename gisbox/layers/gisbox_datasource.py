@@ -420,11 +420,11 @@ class GisboxFeatureLayer(QObject, Logger):
         layer = self.sender()
         edit_buffer = layer.editBuffer()
 
-        payload = {'layer_id': self.id}
+        payload = {'data_source_name': self.datasource_name, 'layer_id': self.id}
 
         to_add = self.addFeatures(edit_buffer)
         if to_add:
-            payload['create'] = to_add
+            payload['insert'] = to_add
 
         to_update = self.updateFeatures(layer, edit_buffer)
         if to_update:
@@ -435,11 +435,11 @@ class GisboxFeatureLayer(QObject, Logger):
             payload['delete'] = to_delete
 
         if to_delete:
-            payload['delete'] = self.getFeaturesDbIds(
+            payload['delete']['features_ids'] = self.getFeaturesDbIds(
                 to_delete['qgis_features_ids'], layer)
 
         GISBOX_CONNECTION.post(
-            f"/api/v2/datasources-features/modify/{self.datasource_name}",
+            f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
     
@@ -507,7 +507,7 @@ class GisboxFeatureLayer(QObject, Logger):
                 if f['geometry']['type'].lower() != self.geometry_type.lower():
                     f['geometry']['type'] = self.geometry_type
                     f['geometry']['coordinates'] = [f['geometry']['coordinates']]
-                request_feature = {k: self.sanetize_data_type(v) if v != NULL else None for k,
+                properties = {k: self.sanetize_data_type(v) if v != NULL else None for k,
                               v in f['properties'].items()}
                 geometry = f['geometry']
                 geometry.update({'crs': {
@@ -516,19 +516,25 @@ class GisboxFeatureLayer(QObject, Logger):
                         'name': f'EPSG:{self.srid}'
                     }
                 }})
+                properties.update({self.datasource.geom_column_name: geometry})
 
-                request_feature[self.datasource.geom_column_name] = geometry
-                request_feature[self.datasource.id_column_name] = f['properties'].pop(self.datasource.id_column_name)
-
-                features.append(request_feature)
+                features.append({
+                    'properties': properties,
+                    'fid': f['properties'].pop(self.datasource.id_column_name),
+                    'qgis_id': feature.id()
+                })
 
             else:
                 attributes = feature.attributes()
                 names = feature.fields().names()
-                request_feature = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
+                properties = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
                               for i in range(len(names))}
 
-                features.append(request_feature)
+                features.append({
+                    'properties': properties,
+                    'fid': properties[self.datasource.id_column_name],
+                    'qgis_id': feature.id()
+                })
 
         return features
     
