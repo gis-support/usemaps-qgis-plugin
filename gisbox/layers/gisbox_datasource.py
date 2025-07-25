@@ -57,6 +57,7 @@ class GisboxFeatureLayer(QObject, Logger):
         self.form_schema = data['form_schema']
         self.write_permission = data['write_permission']
         self.valid_fields = []
+        self.filter_expression = data.get("filter_expression")
 
         self.connectSignals()
 
@@ -247,8 +248,8 @@ class GisboxFeatureLayer(QObject, Logger):
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
         self.time = time.time()
-        GISBOX_CONNECTION.get(
-            f'/api/qgis/layers/features_layers/{self.id}/features?cache={time.time()}', callback=self.on_features.emit)
+        GISBOX_CONNECTION.post(
+            f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
 
     def onFeatures(self, data: dict):
         """ Sparsowanie i dodanie otrzymanych obiektów w sposób nieblokujący QGIS
@@ -263,12 +264,12 @@ class GisboxFeatureLayer(QObject, Logger):
     def onReload(self, data: dict):
         self._reload_layer_metadata()
         GISBOX_CONNECTION.get(
-            f'/api/qgis/layers/features_layers/{self.id}/features?cache={time.time()}', callback=self.on_features.emit)
+            f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
 
     def parseFeatures(self, task: QgsTask, data: dict):
         """ Parsowanie danych z serwera i dodanie obiektów do warstwy """
         try:
-            features = self.geojson2features(data['features']['features'])
+            features = self.geojson2features(data['features'])
         except Exception as e:
             self.log(e)
             return
