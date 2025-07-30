@@ -1,6 +1,6 @@
 from qgis.PyQt.QtGui import QIcon
 from qgis.utils import iface
-from qgis.core import QgsProject
+from qgis.core import QgsProject, QgsMapLayer
 from PyQt5 import QtWidgets
 
 from .modules.auto_digitization.gui.widget import AutoDigitizationWidget
@@ -68,7 +68,7 @@ class GISBox():
         """
         is_connected = GISBOX_CONNECTION.is_connected
         for layer in QgsProject.instance().mapLayers().values():
-            if layers_registry.isGisboxLayer(layer):
+            if layers_registry.isGisboxLayer(layer) and layer.type() == QgsMapLayer.VectorLayer:
 
                 if is_connected:
                     # Odczytywanie uprawnień użytkownika do edycji warstwy
