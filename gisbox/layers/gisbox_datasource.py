@@ -44,7 +44,7 @@ class GisboxFeatureLayer(QObject, Logger):
 
         self.datasource = None
         self.id = data['id']
-        self.datasource_name = data['data_source_name']
+        self.datasource_name = data['datasource_name']
         self.name = data['name']
         self.srid = data['srid']
         self.topo_layer = data['layer_scope'] in (

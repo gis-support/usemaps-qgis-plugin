@@ -49,22 +49,26 @@ class LayersRegistry(QObject, Logger):
         GISBOX_CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)
         GISBOX_CONNECTION.get(
-            f'/api/qgis/layers/schema?cache={time.time()}', callback=self.on_layers.emit)
+            f'/api/v2/layers-schema', callback=self.on_layers.emit)
 
     def onLayers(self, data: dict):
         """ Zapamiętanie pobranych warstw i pobranie warstw podkładowych """
-        layers = data['data']['layers']
-        self.groups.extend(data['data']['groups'])
+        groups = data['data']
+        self.groups.extend(groups)
 
-        for layer in layers:
-            self._put_layer_in_group(layer)
-            if layer['type'] == 'service_layer':
-                if not layer.get('service_layers_names'):
-                    continue
-                current_layer = BaseMapLayer(layer)
-            else:
-                current_layer = GisboxFeatureLayer(layer)
-            self.layers[current_layer.id] = current_layer
+        for group in groups:
+            layers = group['layers']
+            self.groups.extend(group)
+
+            for layer in layers:
+                if layer['layer_type'] == 'service_layer':
+                    if not layer.get('service_layers_names'):
+                        continue
+                    current_layer = BaseMapLayer(layer)
+                else:
+                    current_layer = GisboxFeatureLayer(layer)
+                self.layers[current_layer.id] = current_layer
+
         self.on_schema.emit(self.groups)
 
     def _set_relation_values_mapping(self, data: dict):

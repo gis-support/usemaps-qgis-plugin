@@ -114,7 +114,9 @@ class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             if not layers:
                 return
 
-            for layer_id in layers:
+            for layer in layers:
+                layer_id = layer.get("id")
+
                 layer_class = layers_registry.layers.get(layer_id)
 
                 if layer_class:
@@ -129,6 +131,9 @@ class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         def add_groups(groups: list):
 
             for group in groups:
+                if not isinstance(group, dict):
+                    continue
+
                 group_layers = group.get('layers')
 
                 if not group_layers:
