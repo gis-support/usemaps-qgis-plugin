@@ -49,7 +49,7 @@ class LayersRegistry(QObject, Logger):
         GISBOX_CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)
         GISBOX_CONNECTION.get(
-            f'/api/v2/layers-schema', callback=self.on_layers.emit)
+            f'/api/v2/layers-schema?full_data=true', callback=self.on_layers.emit)
 
     def onLayers(self, data: dict):
         """ Zapamiętanie pobranych warstw i pobranie warstw podkładowych """
