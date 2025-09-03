@@ -261,9 +261,9 @@ class GisboxFeatureLayer(QObject, Logger):
         self.message(
             f'Pomyślnie wczytano dane warstwy: {self.layers[0].name()}, czas: {time.time() - self.time}', level=Qgis.Success, duration=5)
     
-    def onReload(self, data: dict):
+    def onReload(self):
         self._reload_layer_metadata()
-        GISBOX_CONNECTION.get(
+        GISBOX_CONNECTION.post(
             f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
 
     def parseFeatures(self, task: QgsTask, data: dict):
