@@ -84,36 +84,13 @@ class GISBoxPlugin:
 
         return dockwidget_action
 
-    # def initModules(self, modules: list = ['uldk', 'gugik_nmt', 'wms', 'wmts', 'mapster', 'data_downloader']):
-    #     """ Włączenie modułów """
-
-    #     modules_path = Path( self.plugin_dir ).joinpath('modules')
-    #     #Iteracja po modułach dodatkowych
-    #     for module_name in modules:
-    #         main_module = modules_path.joinpath(module_name).joinpath('main.py')
-    #         #Załadowanie modułu
-    #         spec = util.spec_from_file_location('main', main_module)
-    #         module = util.module_from_spec(spec)
-    #         spec.loader.exec_module(module)
-    #         #Lista obiektów w module
-    #         clsmembers = inspect.getmembers(module, inspect.isclass)
-    #         for (_, c) in clsmembers:
-    #             # Odrzucamy inne klasy niż dziedziczące po klasie bazowej
-    #             if issubclass(c, BaseModule) and c is not BaseModule:
-    #                 #Aktywacja i rejestracja modułu
-    #                 self.modules.append( c(self) )
-
     def initGui(self):
 
         self.gisbox = GISBox(self)
         self.topMenu = self.iface.mainWindow().menuBar().addMenu(u'&GIS.Box')
 
-        # self.initModules()
-
         self.topMenu.addSeparator()
         self.topMenu.setObjectName('gisSupportMenu')
-
-        # self.initModules(["gisbox"])
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
@@ -122,9 +99,6 @@ class GISBoxPlugin:
             self.iface.removePluginMenu(
                 self.menu,
                 action)
-        #Wyłączenie modułów
-        # for module in self.modules:
-        #     module.unload()
 
         self.toolbar.clear()
         self.toolbar.deleteLater()
