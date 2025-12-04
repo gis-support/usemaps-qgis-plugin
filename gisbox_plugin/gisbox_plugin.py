@@ -8,7 +8,7 @@ from .resources import resources
 from .tools.gisbox_connection import GISBOX_CONNECTION
 from .gisbox.main import GISBox
 
-PLUGIN_NAME = "Wtyczka GIS.Box"
+PLUGIN_NAME = "Wtyczka Usemaps"
 
 class GISBoxPlugin:
 
@@ -20,7 +20,7 @@ class GISBoxPlugin:
 
         self.actions = []
         self.modules = []
-        self.menu = self.tr(u'&Wtyczka GIS.Box')
+        self.menu = self.tr(u'&Wtyczka Usemaps')
         self.toolbar = self.iface.addToolBar(PLUGIN_NAME)
         self.toolbar.addSeparator
 
@@ -86,8 +86,9 @@ class GISBoxPlugin:
 
     def initGui(self):
 
+        self.topMenu = self.iface.mainWindow().menuBar().addMenu(u'&Usemaps')
+
         self.gisbox = GISBox(self)
-        self.topMenu = self.iface.mainWindow().menuBar().addMenu(u'&GIS.Box')
 
         self.topMenu.addSeparator()
         self.topMenu.setObjectName('gisSupportMenu')

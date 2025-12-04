@@ -7,16 +7,16 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Wtyczka GIS.Box
+name=Wtyczka Usemaps
 qgisMinimumVersion=3.0
 version=0.1
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
 
-description=GIS.Box is a web-based GIS system that is used to store, edit, analyze, and visualize spatial data. It perfectly extends the benefits of QGIS to your organization, adding the ability to work "in the cloud".
+description=Usemaps is a web-based GIS system that is used to store, edit, analyze, and visualize spatial data. It perfectly extends the benefits of QGIS to your organization, adding the ability to work "in the cloud".
 
-description[pl]=GIS.Box to dostępny przez przeglądarkę System GIS. Doskonale rozszerza korzyści jakie daje Twojej organizacji QGIS, dodając możliwości pracy “w chmurze”.
+description[pl]=Usemaps to dostępny przez przeglądarkę System GIS. Doskonale rozszerza korzyści jakie daje Twojej organizacji QGIS, dodając możliwości pracy “w chmurze”.
 
 tracker=https://gis-support.pl/
 repository=https://gis-support.pl/

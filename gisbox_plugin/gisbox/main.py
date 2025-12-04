@@ -1,9 +1,7 @@
+from PyQt5.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
-from qgis.utils import iface
 from qgis.core import QgsProject, QgsMapLayer
-from PyQt5 import QtWidgets
 
-from .modules.auto_digitization.gui.widget import AutoDigitizationWidget
 from ..tools.gisbox_connection import GISBOX_CONNECTION
 from .layers.layers_registry import layers_registry
 from .gisbox_dockwidget import GISBoxDockWidget
@@ -15,19 +13,18 @@ class GISBox():
         self.parent = parent
         self.parent.toolbar.addSeparator()
         self.dockwidget = GISBoxDockWidget()
-        self.autoDigitizationWidget = None
 
         self.dockwidgetAction = self.parent.add_dockwidget_action(
             dockwidget = self.dockwidget,
             icon_path=":/plugins/gisbox-plugin/disconnected.png",
-            text = 'GIS.Box'
+            text = 'Usemaps',
+            add_to_topmenu=True
             )
 
         layers_registry.on_schema.connect(self.readProject)
         QgsProject.instance().readProject.connect(self.readProject)
         QgsProject.instance().readProject.connect(self.toggle_gisbox_layers_readonly_mode)
         self.dockwidget.connectButton.clicked.connect(self.onConnection)
-        self.mount_autodigitization_widget()
 
     def onConnection(self, connect: bool):
         """ Połączenie/rozłączenie z serwerem """
@@ -41,10 +38,6 @@ class GISBox():
             self.dockwidget.connectButton.setText('Wyloguj')
             self.dockwidget.refreshButton.setEnabled(True)
 
-            GISBOX_CONNECTION.get(
-                "/api/settings/automatic_digitization_module_enabled?value_only=true", callback=self.enableDigitization
-            )
-
         else:
             # Rozłączono z serwerem lub błąd połączenia
 
@@ -56,15 +49,14 @@ class GISBox():
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
             self.dockwidget.clear_treeview()
-            self.dockwidget.vectorTab.setEnabled(False)
         
         self.toggle_gisbox_layers_readonly_mode()
 
 
     def toggle_gisbox_layers_readonly_mode(self):
         """
-        Przełącza tryb `read_only` warstw GIS.Box.
-        Wykorzystywane przy łączeniu/rozłączaniu z GIS.Box.
+        Przełącza tryb `read_only` warstw Usemaps.
+        Wykorzystywane przy łączeniu/rozłączaniu z Usemaps.
         """
         is_connected = GISBOX_CONNECTION.is_connected
         for layer in QgsProject.instance().mapLayers().values():
@@ -94,23 +86,4 @@ class GISBox():
                 layer_class = layers_registry.layers[int(
                     layer.customProperty('gisbox/layer_id'))]
                 layer_class.setLayer(layer, from_project=True)
-                
 
-    def mount_autodigitization_widget(self):
-        self.autoDigitizationWidget = AutoDigitizationWidget()
-        content_widget = self.autoDigitizationWidget.widget()
-        layout = QtWidgets.QVBoxLayout()
-        self.dockwidget.vectorTab.setLayout(layout)
-        layout.addWidget(content_widget)
-        self.dockwidget.vectorTab.setEnabled(False)
-
-    def enableDigitization(self, data):
-        if data["data"]:
-            self.checkDigitizationPermissions()
-
-    def checkDigitizationPermissions(self):
-        module = GISBOX_CONNECTION.current_user["permissions"]["modules"].get("AUTOMATIC_DIGITIZATION")
-        if module["main_value"] == 1:
-            self.dockwidget.vectorTab.setEnabled(True)
-            self.autoDigitizationWidget.getOptions()
-            return

@@ -17,16 +17,16 @@ class LoginSettingsDialog(QDialog, FORM_CLASS):
         # Ustawienia logowania
         settings = QSettings()
         settings.beginGroup('gisbox/gisbox_connection')
-        settings.setValue('user', settings.value('user', 'DEMO'))
-        settings.setValue('pass', settings.value('pass', 'JesliChceszEdytowacNapiszDoNas:)'))
-        settings.setValue('host', settings.value('host', 'https://demo.gisbox.pl'))
+        settings.setValue('user', settings.value('user', ''))
+        settings.setValue('pass', settings.value('pass', ''))
+        settings.setValue('host', settings.value('host', ''))
         
-        self.leLogin.setText(settings.value('user', 'DEMO'))
+        self.leLogin.setText(settings.value('user', ''))
         self.leLogin.textChanged.connect(
             lambda text: settings.setValue('user', text))
-        self.lePassword.setText(settings.value('pass', 'JesliChceszEdytowacNapiszDoNas:)'))
+        self.lePassword.setText(settings.value('pass', ''))
         self.lePassword.textChanged.connect(
             lambda text: settings.setValue('pass', text))
-        self.leHost.setText(settings.value('host', 'https://demo.gisbox.pl'))
+        self.leHost.setText(settings.value('host', ''))
         self.leHost.textChanged.connect(
             lambda text: settings.setValue('host', text))
