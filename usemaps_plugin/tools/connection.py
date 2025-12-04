@@ -6,10 +6,10 @@ from qgis.core import QgsNetworkAccessManager, Qgis
 import json
 
 from .logger import Logger
-from ..gisbox.gui.two_fa import TwoFADialog
+from ..service.gui.two_fa import TwoFADialog
 
 
-class GisboxConnection(QObject, Logger):
+class Connection(QObject, Logger):
     on_connect = pyqtSignal(bool)
     on_disconnect = pyqtSignal()
     on_error = pyqtSignal(dict)
@@ -19,7 +19,7 @@ class GisboxConnection(QObject, Logger):
     QUEUE = {}
 
     def __init__(self, parent=None):
-        super(GisboxConnection, self).__init__()
+        super(Connection, self).__init__()
         self.parent = parent
 
         self.token = None
@@ -231,4 +231,4 @@ class GisboxConnection(QObject, Logger):
             return True
 
 
-GISBOX_CONNECTION = GisboxConnection()
+CONNECTION = Connection()

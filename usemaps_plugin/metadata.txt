@@ -7,7 +7,7 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Wtyczka Usemaps
+name=Usemaps
 qgisMinimumVersion=3.0
 version=0.1
 author=GIS Support
@@ -26,7 +26,7 @@ repository=https://gis-support.pl/
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=hhttps://gis-support.pl/
+homepage=https://gis-support.pl/
 category=Plugins
 icon=resources/connected.png
 # experimental flag

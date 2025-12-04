@@ -12,11 +12,11 @@ from qgis.core import QgsProject
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
 from .gui.login_settings import LoginSettingsDialog
-from ..tools.gisbox_connection import GISBOX_CONNECTION
+from ..tools.connection import CONNECTION
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'gisbox_dockwidget.ui'))
+    os.path.dirname(__file__), 'main_dockwidget.ui'))
 
 
 class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
@@ -227,7 +227,7 @@ class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         """
         Odświeżanie warstw Usemaps, które obecnie znajdują się w projekcie.
         """
-        if not GISBOX_CONNECTION.is_connected:
+        if not CONNECTION.is_connected:
             return
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isGisboxLayer(layer):

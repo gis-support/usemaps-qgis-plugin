@@ -8,10 +8,10 @@ from qgis.utils import iface
 from . import RELATION_VALUES_MAPPING_REGISTRY
 
 from .basemap_layer import BaseMapLayer
-from .gisbox_datasource import GisboxFeatureLayer
+from .datasources import GisboxFeatureLayer
 
 from ...tools.logger import Logger
-from ...tools.gisbox_connection import GISBOX_CONNECTION
+from ...tools.connection import CONNECTION
 
 class LayersRegistry(QObject, Logger):
     """ Klasa służy do zarządzania warstwami gisbox """
@@ -32,7 +32,7 @@ class LayersRegistry(QObject, Logger):
 
         # Sygnały
         # Po połączeniu pobieramy dane
-        GISBOX_CONNECTION.on_connect.connect(self.loadData)
+        CONNECTION.on_connect.connect(self.loadData)
         self.on_layers.connect(self.onLayers)
 
     def loadData(self, connected: bool):
@@ -46,9 +46,9 @@ class LayersRegistry(QObject, Logger):
         self.layers = {}
         self.baselayers = {}
         self.message('Pobieranie schematu warstw...', duration=10)
-        GISBOX_CONNECTION.get(
+        CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)
-        GISBOX_CONNECTION.get(
+        CONNECTION.get(
             f'/api/v2/layers-schema?full_data=true', callback=self.on_layers.emit)
 
     def onLayers(self, data: dict):

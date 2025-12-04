@@ -5,12 +5,12 @@ from PyQt5.QtGui import QDesktopServices, QIcon
 from PyQt5.QtWidgets import QAction, QDockWidget
 
 from .resources import resources
-from .tools.gisbox_connection import GISBOX_CONNECTION
-from .gisbox.main import GISBox
+from .tools.connection import CONNECTION
+from .service.main import GISBox
 
 PLUGIN_NAME = "Wtyczka Usemaps"
 
-class GISBoxPlugin:
+class UsemapsPlugin:
 
 
     def __init__(self, iface):
@@ -95,7 +95,7 @@ class GISBoxPlugin:
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
-        GISBOX_CONNECTION.disconnect()
+        CONNECTION.disconnect()
         for action in self.actions:
             self.iface.removePluginMenu(
                 self.menu,

@@ -8,7 +8,7 @@ from qgis.PyQt.QtCore import QObject, pyqtSignal
 
 from urllib.parse import urlencode
 
-from .gisbox_connection import GISBOX_CONNECTION
+from .connection import CONNECTION
 
 
 class NetworkHandler(QObject):
@@ -74,7 +74,7 @@ class NetworkHandler(QObject):
                 request.setRawHeader(b'X-Response-SRID', srid.encode())
             if token:
                 request.setRawHeader(b'X-User-Agent', b'qgis_gs')
-                request.setRawHeader(b'X-Access-Token', GISBOX_CONNECTION.token.encode())
+                request.setRawHeader(b'X-Access-Token', CONNECTION.token.encode())
             if databox:
                 request.setHeader(QNetworkRequest.ContentTypeHeader, "application/json")
             reply = self.network_manager.post(request, body)

@@ -12,7 +12,7 @@ from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
 
 from ...tools.logger import Logger
 from .geojson import geojson2geom
-from ...tools.gisbox_connection import GISBOX_CONNECTION
+from ...tools.connection import CONNECTION
 
 class GisboxDataSource(QObject, Logger):
     """ Klasa bazowa dla źródeł danych GISBox """
@@ -65,7 +65,7 @@ class GisboxFeatureLayer(QObject, Logger):
         """ Pobranie źródła danych """
         datasource = DATA_SOURCE_REGISTRY.get(datasource_name)
         if datasource is None:
-            datasource_meta = GISBOX_CONNECTION.get(
+            datasource_meta = CONNECTION.get(
                 f'/api/v2/datasources/{datasource_name}', sync=True)
             if not datasource_meta.get('data'):
                 return
@@ -170,7 +170,7 @@ class GisboxFeatureLayer(QObject, Logger):
         self.datasource = self._get_datasource(self.datasource_name)
         self.fields = self.datasource.attributes_schema['attributes']
         if self.id:
-            self.metadata = GISBOX_CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
+            self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
             self.form_schema = self.metadata['data']['form_schema']
             self.valid_fields = self._validate_fields(
                 form_schema=self.form_schema)
@@ -248,7 +248,7 @@ class GisboxFeatureLayer(QObject, Logger):
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
         self.time = time.time()
-        GISBOX_CONNECTION.post(
+        CONNECTION.post(
             f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
 
     def onFeatures(self, data: dict):
@@ -263,7 +263,7 @@ class GisboxFeatureLayer(QObject, Logger):
     
     def onReload(self):
         self._reload_layer_metadata()
-        GISBOX_CONNECTION.post(
+        CONNECTION.post(
             f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
 
     def parseFeatures(self, task: QgsTask, data: dict):
@@ -439,7 +439,7 @@ class GisboxFeatureLayer(QObject, Logger):
             payload['delete']['features_ids'] = self.getFeaturesDbIds(
                 to_delete['qgis_features_ids'], layer)
 
-        GISBOX_CONNECTION.post(
+        CONNECTION.post(
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
