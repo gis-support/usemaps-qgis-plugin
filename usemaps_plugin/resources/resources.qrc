@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/plugins/gisbox-plugin" >
+    <qresource prefix="/plugins/usemaps-plugin" >
         <file>connected.svg</file>
         <file>connection.svg</file>
         <file>dodaj_warstwy.svg</file>

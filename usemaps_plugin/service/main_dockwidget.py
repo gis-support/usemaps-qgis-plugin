@@ -19,19 +19,19 @@ FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'main_dockwidget.ui'))
 
 
-class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
+class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     closingPlugin = pyqtSignal()
 
     def __init__(self, parent=None):
-        super(GISBoxDockWidget, self).__init__(parent)
+        super(MainDockWidget, self).__init__(parent)
         self.setupUi(self)
         self.loginSettingsDialog = LoginSettingsDialog(self)
 
-        self.connectButton.setIcon(QIcon(":/plugins/gisbox-plugin/widget_connect.svg"))
+        self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
         self.connectButton.setCheckable(True)
 
-        self.authSettingsButton.setIcon(QIcon(":/plugins/gisbox-plugin/widget_settings.svg"))
+        self.authSettingsButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_settings.svg"))
         self.authSettingsButton.clicked.connect(self.show_login_settings)
 
         self.layerBrowser.textChanged.connect(self.filter_tree_view)
@@ -47,7 +47,7 @@ class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
 
-        self.refreshButton.setIcon(QIcon(":/plugins/gisbox-plugin/refresh.svg"))
+        self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.clicked.connect(self.refresh_layers)
         self.refreshButton.setEnabled(False)
 
@@ -230,7 +230,7 @@ class GISBoxDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
         for layer in QgsProject.instance().mapLayers().values():
-            if layers_registry.isGisboxLayer(layer):
+            if layers_registry.isSystemLayer(layer):
                 layer_id = layer.customProperty('gisbox/layer_id')
                 layer_class = layers_registry.layers.get(int(layer_id))
                 if not layer_class:

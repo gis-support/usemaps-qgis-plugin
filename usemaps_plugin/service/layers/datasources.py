@@ -14,11 +14,11 @@ from ...tools.logger import Logger
 from .geojson import geojson2geom
 from ...tools.connection import CONNECTION
 
-class GisboxDataSource(QObject, Logger):
-    """ Klasa bazowa dla źródeł danych GISBox """
+class Datasource(QObject, Logger):
+    """ Klasa bazowa dla źródeł danych systemowych """
 
     def __init__(self, data: dict, parent=None):
-        super(GisboxDataSource, self).__init__(parent)
+        super(Datasource, self).__init__(parent)
         self.name = data['name']
         self.display_name = data['verbose_name']
         self.attributes_schema = data['attributes_schema']
@@ -27,7 +27,7 @@ class GisboxDataSource(QObject, Logger):
         #self.module = data['module']
 
 
-class GisboxFeatureLayer(QObject, Logger):
+class FeatureLayer(QObject, Logger):
     """ Bazowa klasa dla warstw wektorowych """
 
     on_features = pyqtSignal(dict)
@@ -35,7 +35,7 @@ class GisboxFeatureLayer(QObject, Logger):
     features_loaded = pyqtSignal(object)
 
     def __init__(self, data: dict, parent=None):
-        super(GisboxFeatureLayer, self).__init__(parent)
+        super(FeatureLayer, self).__init__(parent)
 
         # Lista warstw dla danego typu
         self.parent = parent
@@ -61,7 +61,7 @@ class GisboxFeatureLayer(QObject, Logger):
 
         self.connectSignals()
 
-    def _get_datasource(self, datasource_name: str) -> GisboxDataSource:
+    def _get_datasource(self, datasource_name: str) -> Datasource:
         """ Pobranie źródła danych """
         datasource = DATA_SOURCE_REGISTRY.get(datasource_name)
         if datasource is None:
@@ -69,7 +69,7 @@ class GisboxFeatureLayer(QObject, Logger):
                 f'/api/v2/datasources/{datasource_name}', sync=True)
             if not datasource_meta.get('data'):
                 return
-            datasource = GisboxDataSource(datasource_meta['data'])
+            datasource = Datasource(datasource_meta['data'])
             DATA_SOURCE_REGISTRY[datasource_name] = datasource
         return datasource
 

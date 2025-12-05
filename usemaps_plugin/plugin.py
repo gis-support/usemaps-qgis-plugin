@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QAction, QDockWidget
 
 from .resources import resources
 from .tools.connection import CONNECTION
-from .service.main import GISBox
+from .service.main import ServiceProvider
 
 PLUGIN_NAME = "Wtyczka Usemaps"
 
@@ -25,7 +25,7 @@ class UsemapsPlugin:
         self.toolbar.addSeparator
 
     def tr(self, message):
-        return QCoreApplication.translate('GISBoxPlugin', message)
+        return QCoreApplication.translate('UsemapsPlugin', message)
 
     def add_action(
         self,
@@ -88,7 +88,7 @@ class UsemapsPlugin:
 
         self.topMenu = self.iface.mainWindow().menuBar().addMenu(u'&Usemaps')
 
-        self.gisbox = GISBox(self)
+        self.service = ServiceProvider(self)
 
         self.topMenu.addSeparator()
         self.topMenu.setObjectName('gisSupportMenu')

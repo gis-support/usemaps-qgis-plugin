@@ -8,7 +8,7 @@ from ...tools.logger import Logger
 
 
 class BaseLayer(QObject, Logger):
-    """ Klasa bazowa dla wszystkich typów warstw gisbox """
+    """ Klasa bazowa dla wszystkich typów warstw systemowych """
 
     def __init__(self, data: dict, parent, layer_type=None, layers=[]):
         super(BaseLayer, self).__init__(parent)

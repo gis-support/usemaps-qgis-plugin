@@ -8,13 +8,13 @@ from qgis.utils import iface
 from . import RELATION_VALUES_MAPPING_REGISTRY
 
 from .basemap_layer import BaseMapLayer
-from .datasources import GisboxFeatureLayer
+from .datasources import FeatureLayer
 
 from ...tools.logger import Logger
 from ...tools.connection import CONNECTION
 
 class LayersRegistry(QObject, Logger):
-    """ Klasa służy do zarządzania warstwami gisbox """
+    """ Klasa służy do zarządzania warstwami systemowymi Usemaps """
 
     on_schema = pyqtSignal(list)
     on_layers = pyqtSignal(dict)
@@ -66,7 +66,7 @@ class LayersRegistry(QObject, Logger):
                         continue
                     current_layer = BaseMapLayer(layer)
                 else:
-                    current_layer = GisboxFeatureLayer(layer)
+                    current_layer = FeatureLayer(layer)
                 self.layers[current_layer.id] = current_layer
 
         self.on_schema.emit(self.groups)
@@ -100,8 +100,8 @@ class LayersRegistry(QObject, Logger):
             if subgroup is not None and subgroup['id'] == group_id:
                 return subgroup
 
-    def isGisboxLayer(self, layer=None):
-        """ Sprawdza czy dana warstwa jest warstwą GISBox """
+    def isSystemLayer(self, layer=None):
+        """ Sprawdza czy dana warstwa jest warstwą systemową """
         if layer is None:
             # Jeśli nie podano warstwy to sprawdzamy warstwę aktywną
             layer = iface.activeLayer()
@@ -115,8 +115,8 @@ class LayersRegistry(QObject, Logger):
         if layer is None:
             # Jeśli nie podano warstwy to sprawdzamy warstwę aktywną
             layer = iface.activeLayer()
-        if not self.isGisboxLayer(layer):
-            # To nie jest warstwa gisbox
+        if not self.isSystemLayer(layer):
+            # To nie jest warstwa systemowa
             return
         return layers_registry.layers.get(int(layer.customProperty('gisbox/layer_id')))
 
