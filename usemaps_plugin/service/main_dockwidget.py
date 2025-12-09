@@ -13,6 +13,7 @@ from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
 from .gui.login_settings import LoginSettingsDialog
 from ..tools.connection import CONNECTION
+from ..tools.project_variables import get_layer_mappings
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -229,9 +230,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         """
         if not CONNECTION.is_connected:
             return
+        mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isSystemLayer(layer):
-                layer_id = layer.customProperty('gisbox/layer_id')
+                layer_qgis_id = layer.id()
+                layer_id = mappings.get(layer_qgis_id)
                 layer_class = layers_registry.layers.get(int(layer_id))
                 if not layer_class:
                     return

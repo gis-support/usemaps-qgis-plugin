@@ -13,6 +13,7 @@ from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
 from ...tools.logger import Logger
 from .geojson import geojson2geom
 from ...tools.connection import CONNECTION
+from ...tools.project_variables import save_layer_mapping
 
 class Datasource(QObject, Logger):
     """ Klasa bazowa dla źródeł danych systemowych """
@@ -95,11 +96,7 @@ class FeatureLayer(QObject, Logger):
             self.datasource = self._get_datasource(self.datasource_name)
         # Ustawienia warstwy
         layer.setCustomProperty("skipMemoryLayersCheck", 1)
-        layer.setCustomProperty('gisbox/layer_id', self.id)
-        layer.setCustomProperty('gisbox/topological', self.topo_layer)
-        layer.setCustomProperty('gisbox/is_gisbox_layer', True)
-        layer.setCustomProperty('gisbox/layer_type', self.datasource_name)
-        layer.setCustomProperty('gisbox/layer_scope', self.layer_scope)
+        save_layer_mapping(layer_qgis_id=layer.id(), layer_gisbox_id=self.id)
         # Zarejestrowanie warstwy
         self.layers.append(layer)
         self.registerLayer(layer)

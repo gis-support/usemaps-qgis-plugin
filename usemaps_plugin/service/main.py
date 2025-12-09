@@ -5,6 +5,7 @@ from qgis.core import QgsProject, QgsMapLayer
 from ..tools.connection import CONNECTION
 from .layers.layers_registry import layers_registry
 from .main_dockwidget import MainDockWidget
+from ..tools.project_variables import get_layer_mapping, migrate_layer_gisbox_id_variable, remove_layer_mapping
 
 class ServiceProvider():
 
@@ -24,6 +25,7 @@ class ServiceProvider():
         layers_registry.on_schema.connect(self.readProject)
         QgsProject.instance().readProject.connect(self.readProject)
         QgsProject.instance().readProject.connect(self.toggle_system_layers_readonly_mode)
+        QgsProject.instance().layerRemoved.connect(remove_layer_mapping)
         self.dockwidget.connectButton.clicked.connect(self.onConnection)
 
     def onConnection(self, connect: bool):
@@ -64,8 +66,9 @@ class ServiceProvider():
 
                 if is_connected:
                     # Odczytywanie uprawnień użytkownika do edycji warstwy
-                    layer_id = layer.customProperty('usemaps/layer_id')
-                    layer_permission = CONNECTION.current_user['permissions']['layers'].get(int(layer_id))
+                    layer_qgis_id = layer.id()
+                    layer_id = get_layer_mapping(layer_qgis_id)
+                    layer_permission = CONNECTION.current_user['permissions']['layers'].get(layer_id)
 
                     if layer_permission['main_value'] == 2:
                         layer.setReadOnly(False)
@@ -83,7 +86,9 @@ class ServiceProvider():
             return
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isSystemLayer(layer):
-                layer_class = layers_registry.layers[int(
-                    layer.customProperty('usemaps/layer_id'))]
-                layer_class.setLayer(layer, from_project=True)
-
+                migrate_layer_gisbox_id_variable(layer)
+                if CONNECTION.is_connected:
+                    layer_qgis_id = layer.id()
+                    layer_id = get_layer_mapping(layer_qgis_id)
+                    layer_class = layers_registry.layers[layer_id]
+                    layer_class.setLayer(layer, from_project=True)
