@@ -4,6 +4,7 @@ from qgis.core import QgsProject, QgsMapLayer
 
 from ..tools.connection import CONNECTION
 from .layers.layers_registry import layers_registry
+from .layers.datasources import Datasource
 from .main_dockwidget import MainDockWidget
 from ..tools.project_variables import get_layer_mapping, migrate_layer_gisbox_id_variable, remove_layer_mapping
 
@@ -91,4 +92,7 @@ class ServiceProvider():
                     layer_qgis_id = layer.id()
                     layer_id = get_layer_mapping(layer_qgis_id)
                     layer_class = layers_registry.layers[layer_id]
-                    layer_class.setLayer(layer, from_project=True)
+                    if not isinstance(layer_class, Datasource):
+                        layer_class.setLayer(layer)
+                    else:
+                        layer_class.setLayer(layer, from_project=True)
