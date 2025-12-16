@@ -97,9 +97,6 @@ class LayersRegistry(QObject, Logger):
         for group in groups:
             if group['id'] == group_id:
                 return group
-            subgroup = self.getGroupById(group_id, group['subgroups'])
-            if subgroup is not None and subgroup['id'] == group_id:
-                return subgroup
 
     def isSystemLayer(self, layer=None):
         """ Sprawdza czy dana warstwa jest warstwą systemową """
@@ -135,7 +132,8 @@ class LayersRegistry(QObject, Logger):
 
         root = QgsProject.instance().layerTreeRoot()
         qgis_group = root.addGroup(group_name)
-        for layer_id in group['layers']:
+        for layer in group['layers']:
+            layer_id = layer.get("id")
             layer_class = self.layers.get(layer_id)
             if layer_class:
                 layer_class.loadLayer(group=qgis_group)
