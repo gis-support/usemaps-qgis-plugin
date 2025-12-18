@@ -26,7 +26,7 @@ class LayersRegistry(QObject, Logger):
         super().__init__()
         # Dane inicjalne
         self.groups = [{'id': -99, 'schema_scope': 'module',
-                        'name': 'Warstwy modułów dodatkowych',
+                        'name': self.tr('Warstwy modułów dodatkowych'),
                         'subgroups': []}]
         self.layers = {}
         self.baselayers = {}
@@ -42,11 +42,11 @@ class LayersRegistry(QObject, Logger):
             return
         # Wyczyszczenie wcześniejszych danych
         self.groups = [{'id': -99, 'schema_scope': 'module',
-                        'name': 'Warstwy modułów dodatkowych',
+                        'name': self.tr('Warstwy modułów dodatkowych'),
                         'subgroups': []}]
         self.layers = {}
         self.baselayers = {}
-        self.message('Pobieranie schematu warstw...', duration=10)
+        self.message(self.tr('Pobieranie schematu warstw...'), duration=10)
         CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)
         CONNECTION.get(

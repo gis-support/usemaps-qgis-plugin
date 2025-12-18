@@ -208,7 +208,7 @@ class FeatureLayer(QObject, Logger):
                 fields_table)
             layer = QgsVectorLayer('%s?crs=epsg:%s&%s' % (
                 self.geometry_type, self.srid, qgis_fields), toc_name, 'memory')
-            self.message(f'Wczytywanie warstwy: {toc_name}...', duration=5)
+            self.message(self.tr('Wczytywanie warstwy: {}...').format(toc_name), duration=5)
             # Warstwa tylko do odczytu
             if self.topo_layer or self.layer_scope == 'module' or not self.write_permission:
                 layer.setReadOnly(True)
@@ -253,10 +253,10 @@ class FeatureLayer(QObject, Logger):
         https://new.opengis.ch/2018/06/22/threads-in-pyqgis3/ """
         # Wymagane jest zapamiętanie zadania jako atrybut klasy
         self.task = QgsTask.fromFunction(
-            'Ładowanie obiektów', self.parseFeatures, data=data['data'])
+            self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
         QgsApplication.taskManager().addTask(self.task)
         self.message(
-            f'Pomyślnie wczytano dane warstwy: {self.layers[0].name()}, czas: {time.time() - self.time}', level=Qgis.Success, duration=5)
+            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.Success, duration=5)
     
     def onReload(self):
         self._reload_layer_metadata()
@@ -330,7 +330,7 @@ class FeatureLayer(QObject, Logger):
 
         config = layer.editFormConfig()
         id_field = layer.fields().indexFromName(self.datasource.id_column_name)
-        layer.setFieldAlias(id_field, 'Identyfikator')
+        layer.setFieldAlias(id_field, self.tr('Identyfikator'))
         config.setReadOnly(id_field, True)
 
         if form_schema:
@@ -446,7 +446,7 @@ class FeatureLayer(QObject, Logger):
             self.message(data.get("error_message"), level=Qgis.Critical)
             return
         
-        self.message(f'Pomyślnie zmodyfikowano dane warstwy: {self.layers[0].name()}', 
+        self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()), 
                         level=Qgis.Success, duration=5)
         self.on_reload.emit(True)
         

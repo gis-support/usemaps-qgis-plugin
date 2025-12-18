@@ -66,8 +66,8 @@ class TwoFADialog(QDialog, FORM_CLASS):
         manager.blockingPost(request, data)
 
         iface.messageBar().pushMessage(
-            'Weryfikacja dwuetapowa',
-            'Wysłano kod weryfikacyjny ponownie.',
+            self.tr('Weryfikacja dwuetapowa'),
+            self.tr('Wysłano kod weryfikacyjny ponownie.'),
             level=Qgis.Info
         )
 

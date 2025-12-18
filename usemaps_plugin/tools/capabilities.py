@@ -4,7 +4,7 @@ from qgis.core import QgsNetworkAccessManager
 from owslib.wms import WebMapService
 from owslib.wfs import WebFeatureService
 from PyQt5.QtNetwork import QNetworkRequest, QNetworkReply
-from qgis.PyQt.QtCore import QUrl
+from qgis.PyQt.QtCore import QUrl, QCoreApplication
 from typing import Union
 
 try:
@@ -35,7 +35,7 @@ def get_capabilities(url: str, type: str) -> Union[WebMapService, WebFeatureServ
         xml = et.fromstring(data)
     except EntitiesForbidden as e:
         print_exc()
-        raise CapabilitiesConnectionException(code=409, message=f"Dokument XML pobrany z adresu {url} zawiera potencjalnie niebezpieczne fragmenty i został zablokowany") from e
+        raise CapabilitiesConnectionException(code=409, message=QCoreApplication.translate("Capabilities", "Dokument XML pobrany z adresu {} zawiera potencjalnie niebezpieczne fragmenty i został zablokowany").format(url)) from e # Tekst do tłumaczenia
     version =  xml.attrib.get("version")
     
     if type == "WMS":

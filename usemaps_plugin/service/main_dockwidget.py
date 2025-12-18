@@ -156,7 +156,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.layerTreeView.setModel(self.proxy_model)
         self.layerTreeView.setHeaderHidden(True)
         self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.message('Pobrano schemat warstw')
+        self.message(self.tr('Pobrano schemat warstw'))
 
 
     def add_layer_to_map(self, index):

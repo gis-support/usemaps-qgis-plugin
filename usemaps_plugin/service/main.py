@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsProject, QgsMapLayer
+from qgis.PyQt.QtCore import QCoreApplication
 
 from ..tools.connection import CONNECTION
 from .layers.layers_registry import layers_registry
@@ -38,7 +39,7 @@ class ServiceProvider():
             # Połączono z serwerem
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/connected.png"))
             self.dockwidget.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_disconnect.svg"))
-            self.dockwidget.connectButton.setText('Wyloguj')
+            self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Wyloguj"))
             self.dockwidget.refreshButton.setEnabled(True)
 
         else:
@@ -48,7 +49,7 @@ class ServiceProvider():
 
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/disconnected.png"))
             self.dockwidget.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
-            self.dockwidget.connectButton.setText('Zaloguj')
+            self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Zaloguj"))
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
             self.dockwidget.clear_treeview()

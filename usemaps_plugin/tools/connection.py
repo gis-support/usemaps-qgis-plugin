@@ -2,7 +2,7 @@
 import urllib
 import uuid
 
-from PyQt5.QtCore import QObject, QUrl, pyqtSignal, QSettings
+from PyQt5.QtCore import QObject, QUrl, pyqtSignal, QSettings, QCoreApplication
 from PyQt5.QtNetwork import QNetworkRequest
 from qgis.core import QgsNetworkAccessManager, Qgis
 import json
@@ -39,14 +39,15 @@ class Connection(QObject, Logger):
         try:
             response_data = json.loads(bytearray(reply.readAll()))
         except Exception as e:
-            cls.message(f'Błąd komunikacji z API: {e}', level=Qgis.Critical, duration=5)
+            msg = QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e)
+            cls.message(msg, level=Qgis.Critical, duration=5)
             return
 
         status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
 
         if status_code not in (200, 201, 204):
             if status_code == 500:
-                error_message = f"Wystąpił nieoczekiwany błąd. Kod błędu: {response_data['error_code']}"
+                error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data['error_code'])
             else:
                 error_message = response_data['error_message']
 
@@ -87,7 +88,7 @@ class Connection(QObject, Logger):
         status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
         if not response_raw:
             self.message(
-                'Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem',
+                self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
                 level=Qgis.Critical, duration=5)
             return False
         response = json.loads(response_raw)
@@ -112,7 +113,7 @@ class Connection(QObject, Logger):
 
     def connect(self) -> bool:
         if self.authenticate():
-            self.log("Połączono")
+            self.log(self.tr("Połączono"))
             self.on_connect.emit(True)
             self.is_connected = True
             self.get_current_user()
@@ -146,7 +147,7 @@ class Connection(QObject, Logger):
             request = self._createRequest('/api/logout')
             request.setRawHeader(b'X-Access-Token', bytes(self.token.encode()))
             self.MANAGER.blockingGet(request)
-        self.log("Rozłączono")
+        self.log(self.tr("Rozłączono"))
         self.on_disconnect.emit()
         self.is_connected = False
         self.token = None
@@ -224,7 +225,7 @@ class Connection(QObject, Logger):
         status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
         if not response_raw:
             self.message(
-                'Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem',
+                self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
                 level=Qgis.Critical, duration=5)
             return False
         response = json.loads(response_raw)

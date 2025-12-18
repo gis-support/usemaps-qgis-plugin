@@ -31,7 +31,7 @@ class NetworkHandler(QObject):
                 self.error_occurred = True
                 retry_callback()
             elif reply.error() in (QNetworkReply.TimeoutError, QNetworkReply.OperationCanceledError, QNetworkReply.UnknownServerError):
-                self.result = {'error': reply.errorString(), 'msg': 'Przekroczono czas oczekiwania na odpowiedź serwera.'}
+                self.result = {'error': reply.errorString(), 'msg': self.tr('Przekroczono czas oczekiwania na odpowiedź serwera.')}
             else:
                 if (status_code := reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)) == 400 and (
                         detail := json.loads(bytearray(reply.readAll())).get("detail")):
