@@ -8,8 +8,8 @@
 
 [general]
 name=Usemaps
-qgisMinimumVersion=3.0
-version=0.1
+qgisMinimumVersion=3.22
+version=0.6
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
@@ -18,15 +18,15 @@ description=Usemaps is a web-based GIS system that is used to store, edit, analy
 
 description[pl]=Usemaps to dostępny przez przeglądarkę System GIS. Doskonale rozszerza korzyści jakie daje Twojej organizacji QGIS, dodając możliwości pracy “w chmurze”.
 
-tracker=https://gis-support.pl/
-repository=https://gis-support.pl/
+tracker=https://github.com/gis-support/usemaps-qgis-plugin/issues
+repository=https://github.com/gis-support/usemaps-qgis-plugin
 # End of mandatory metadata
 
 
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=https://gis-support.pl/
+homepage=https://usemaps.com/
 category=Plugins
 icon=resources/connected.png
 # experimental flag
