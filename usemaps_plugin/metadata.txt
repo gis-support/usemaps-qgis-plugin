@@ -9,14 +9,16 @@
 [general]
 name=Usemaps
 qgisMinimumVersion=3.22
-version=0.6
+version=1.0
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
 
-description=Usemaps is a web-based GIS system that is used to store, edit, analyze, and visualize spatial data. It perfectly extends the benefits of QGIS to your organization, adding the ability to work "in the cloud".
+description=QGIS Plugin for connecting with Usemaps service
+about=Usemaps is a web-based GIS system that is used to store, edit, analyze, and visualize spatial data. It perfectly extends the benefits of QGIS to your organization, adding the ability to work "in the cloud".
 
-description[pl]=Usemaps to dostępny przez przeglądarkę System GIS. Doskonale rozszerza korzyści jakie daje Twojej organizacji QGIS, dodając możliwości pracy “w chmurze”.
+description[pl]=Wtyczka QGIS do łączenia z usługą Usemaps
+about[pl]=Usemaps to dostępny przez przeglądarkę System GIS. Doskonale rozszerza korzyści jakie daje Twojej organizacji QGIS, dodając możliwości pracy “w chmurze”.
 
 tracker=https://github.com/gis-support/usemaps-qgis-plugin/issues
 repository=https://github.com/gis-support/usemaps-qgis-plugin
