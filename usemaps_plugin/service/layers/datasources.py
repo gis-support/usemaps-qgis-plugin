@@ -256,7 +256,7 @@ class FeatureLayer(QObject, Logger):
             self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
         QgsApplication.taskManager().addTask(self.task)
         self.message(
-            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.Success, duration=5)
+            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.MessageLevel.Success, duration=5)
     
     def onReload(self):
         self._reload_layer_metadata()
@@ -343,7 +343,7 @@ class FeatureLayer(QObject, Logger):
                             field in enumerate(layer.fields())}
 
             config.clearTabs()
-            config.setLayout(QgsEditFormConfig.TabLayout)
+            config.setLayout(QgsEditFormConfig.EditorLayout.TabLayout)
 
             for element in elements:
                 tab = QgsAttributeEditorContainer(element['label'], None)
@@ -361,8 +361,8 @@ class FeatureLayer(QObject, Logger):
                         if inner_element.get('required', False) == True and not field_id == id_field:
                             layer.setFieldConstraint(
                                 field_id,
-                                QgsFieldConstraints.ConstraintNotNull,
-                                QgsFieldConstraints.ConstraintStrengthHard,
+                                QgsFieldConstraints.Constraint.ConstraintNotNull,
+                                QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard,
                             )
 
                     default_value_policy = inner_element.get(
@@ -443,11 +443,11 @@ class FeatureLayer(QObject, Logger):
     
     def afterModify(self, data: dict):
         if data.get("error"):
-            self.message(data.get("error_message"), level=Qgis.Critical)
+            self.message(data.get("error_message"), level=Qgis.MessageLevel.Critical)
             return
         
         self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()), 
-                        level=Qgis.Success, duration=5)
+                        level=Qgis.MessageLevel.Success, duration=5)
         self.on_reload.emit(True)
         
     def addFeatures(self, edit_buffer):

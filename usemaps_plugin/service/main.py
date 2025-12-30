@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsProject, QgsMapLayer
 from qgis.PyQt.QtCore import QCoreApplication
@@ -64,7 +64,7 @@ class ServiceProvider():
         """
         is_connected = CONNECTION.is_connected
         for layer in QgsProject.instance().mapLayers().values():
-            if layers_registry.isSystemLayer(layer) and layer.type() == QgsMapLayer.VectorLayer:
+            if layers_registry.isSystemLayer(layer) and layer.type() == QgsMapLayer.LayerType.VectorLayer:
 
                 if is_connected:
                     # Odczytywanie uprawnień użytkownika do edycji warstwy
