@@ -18,8 +18,7 @@
     <item>
      <widget class="QLabel" name="infoLabel">
       <property name="text">
-       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami. 
-&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
       </property>
       <property name="wordWrap">
        <bool>true</bool>
@@ -79,21 +78,12 @@
        <number>0</number>
       </property>
       <widget class="QWidget" name="dataTab">
-       <property name="enabled">
-        <bool>true</bool>
-       </property>
-       <property name="toolTip">
-        <string/>
-       </property>
        <attribute name="title">
         <string>Dane</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
          <widget class="QLineEdit" name="layerBrowser">
-          <property name="text">
-           <string/>
-          </property>
           <property name="placeholderText">
            <string>Szukaj/filtruj warstwy</string>
           </property>
@@ -106,18 +96,42 @@
           </property>
          </widget>
         </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="mapsTab">
+       <attribute name="title">
+        <string>Mapy</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
-         <widget class="QPushButton" name="refreshButton">
-          <property name="text">
-           <string>Odśwież warstwy</string>
+         <widget class="QLineEdit" name="mapBrowser">
+          <property name="placeholderText">
+           <string>Szukaj/filtruj mapy</string>
           </property>
-          <property name="default">
+         </widget>
+        </item>
+        <item>
+         <widget class="QTreeView" name="mapTreeView">
+          <property name="mouseTracking">
            <bool>false</bool>
+          </property>
+          <property name="indentation">
+           <number>5</number>
           </property>
          </widget>
         </item>
        </layout>
       </widget>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="refreshButton">
+      <property name="text">
+       <string>Odśwież</string>
+      </property>
+      <property name="default">
+       <bool>false</bool>
+      </property>
      </widget>
     </item>
    </layout>

@@ -224,7 +224,7 @@ class FeatureLayer(QObject, Logger):
         layer.setName(toc_name)
         layer.reload()
         layer.triggerRepaint()
-        
+
         self.deleteTemporaryIcons(layer)
         return layer
 
@@ -252,13 +252,22 @@ class FeatureLayer(QObject, Logger):
         """ Sparsowanie i dodanie otrzymanych obiektów w sposób nieblokujący QGIS
         https://new.opengis.ch/2018/06/22/threads-in-pyqgis3/ """
         # Wymagane jest zapamiętanie zadania jako atrybut klasy
+        if not self.layers:
+            self.log("Ostrzeżenie: Otrzymano dane, ale warstwa nie jest już zarejestrowana.")
+            return
         self.task = QgsTask.fromFunction(
             self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
         QgsApplication.taskManager().addTask(self.task)
+
+        layer_name = self.layers[0].name() if self.layers else self.name
         self.message(
-            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.Success, duration=5)
-    
+            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(
+                layer_name, time.time() - self.time),
+            level=Qgis.Success, duration=5)
+
     def onReload(self):
+        if not self.layers:
+            return
         self._reload_layer_metadata()
         CONNECTION.post(
             f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
@@ -413,7 +422,7 @@ class FeatureLayer(QObject, Logger):
 
     def getFeaturesDbIds(self, qgis_ids, layer):
         return [f[self.datasource.id_column_name] for f in layer.dataProvider().getFeatures( QgsFeatureRequest().setFilterFids( qgis_ids ))]
-        
+
     def manageFeatures(self):
         layer = self.sender()
         edit_buffer = layer.editBuffer()
@@ -440,16 +449,16 @@ class FeatureLayer(QObject, Logger):
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
-    
+
     def afterModify(self, data: dict):
         if data.get("error"):
             self.message(data.get("error_message"), level=Qgis.Critical)
             return
-        
-        self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()), 
+
+        self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()),
                         level=Qgis.Success, duration=5)
         self.on_reload.emit(True)
-        
+
     def addFeatures(self, edit_buffer):
         """ Dodanie nowych obiektów do warstwy użytkownika """
         added_features = edit_buffer.addedFeatures().values()
@@ -535,7 +544,7 @@ class FeatureLayer(QObject, Logger):
                 })
 
         return features
-    
+
     def sanetize_data_type(self, value: Any) -> Any:
         if isinstance(value, QDateTime):
             value = value.toString('yyyy-MM-dd hh:mm:ss')

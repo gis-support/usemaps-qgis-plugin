@@ -7,7 +7,7 @@ from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent
 from PyQt5.Qt import QStandardItemModel, QStandardItem, QSortFilterProxyModel
 from qgis.utils import iface
 from qgis.PyQt.QtCore import Qt
-from qgis.core import QgsProject
+from qgis.core import QgsProject, Qgis
 
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
@@ -48,7 +48,18 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
 
+        self.mapBrowser.textChanged.connect(self.filter_projects_view)
+
+        self.projects_proxy_model = QSortFilterProxyModel()
+        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.projects_proxy_model.setRecursiveFilteringEnabled(True)
+
+        self.mapTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
+        self.mapTreeView.doubleClicked.connect(self.add_project_to_qgis)
+
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
+        self.refreshButton.setText("  " + self.refreshButton.text())
         self.refreshButton.clicked.connect(self.refresh_layers)
         self.refreshButton.setEnabled(False)
 
@@ -176,7 +187,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     def eventFilter(self, obj, event):
         """
-        Event obsługujący dwa wydarzenia: 
+        Event obsługujący dwa wydarzenia:
         1. dodawanie warstw/grup po przeciągnięciu na panel mapowy.
         2. dodawanie warstw/grup po dwukrotnym kliknięciu lewym przyciskiem myszy na drzewku warstw.
         """
@@ -211,7 +222,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     def handle_map_canvas_drop(self, event):
         """
-        Wywołuje dodanie upuszczonej warstwy/grupy do projektu. 
+        Wywołuje dodanie upuszczonej warstwy/grupy do projektu.
         """
         selected_indexes = self.layerTreeView.selectedIndexes()
 
@@ -230,6 +241,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         """
         if not CONNECTION.is_connected:
             return
+
+        res = CONNECTION.get('/api/v2/projects', sync=True)
+        if isinstance(res, dict) and 'data' in res:
+            self.load_projects_to_treeview(res['data'])
+
         mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isSystemLayer(layer):
@@ -239,3 +255,70 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 if not layer_class:
                     return
                 layer_class.on_reload.emit(True)
+
+    def filter_projects_view(self, text):
+        self.projects_proxy_model.setFilterFixedString(text)
+        if text:
+            self.mapTreeView.expandAll()
+
+    def load_projects_to_treeview(self, projects_data: list):
+        """Wypełnia zakładkę danymi z endpointu /projects."""
+        projects_data.sort(key=lambda x: x.get('last_saved_at') or '', reverse=True)
+
+        tree_model = QStandardItemModel()
+        self.projects_proxy_model.setSourceModel(tree_model)
+
+        for p in projects_data:
+            item = QStandardItem(p['name'])
+            item.setData(p, Qt.UserRole + 1)
+            tree_model.invisibleRootItem().appendRow(item)
+
+        self.mapTreeView.setModel(self.projects_proxy_model)
+        self.mapTreeView.setHeaderHidden(True)
+        self.mapTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+    def add_project_to_qgis(self, index):
+        """Dodaje strukturę projektu (snapshot) do QGIS."""
+        source_index = self.projects_proxy_model.mapToSource(index)
+        project_info = source_index.data(Qt.UserRole + 1)
+        if not project_info:
+            return
+
+        res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
+        if not res or 'data' not in res:
+            self.message(self.tr("Błąd pobierania danych projektu"), level=Qgis.Warning)
+            return
+
+        data = res['data']
+        layers_list = data.get('layers', [])
+
+        if not layers_list:
+            self.message(self.tr("Projekt nie zawiera żadnych warstw."), level=Qgis.Info)
+            return
+
+        # Tworzenie głównej grupy projektu w QGIS
+        root_group = QgsProject.instance().layerTreeRoot().addGroup(project_info['name'])
+
+        def process_items(items, parent_group):
+            if not isinstance(items, list):
+                return
+
+            for item in items:
+                children = item.get('children')
+                if children is not None:
+                    sub_group = parent_group.addGroup(item.get('name', 'Grupa'))
+                    process_items(children, sub_group)
+                else:
+                    l_id = item.get('id') or item.get('layer_id')
+                    if not l_id or item.get('layer_type') == 'mvt':
+                        continue
+                    l_class = (layers_registry.layers.get(l_id) or
+                               layers_registry.layers.get(str(l_id)) or
+                               layers_registry.layers.get(int(l_id) if str(l_id).isdigit() else None))
+                    if l_class:
+                        l_class.loadLayer(group=parent_group)
+                    else:
+                        self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
+
+        process_items(layers_list, root_group)
+        self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"))
