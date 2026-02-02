@@ -1,12 +1,15 @@
 import time
 
-from typing import List, Iterable, Any
+from typing import List, Iterable, Any, Dict
 from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsEditFormConfig, QgsEditorWidgetSetup,
                        QgsAttributeEditorContainer, QgsAttributeEditorField, QgsMapLayer, NULL, QgsFieldConstraints,
-                       QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest)
+                       QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
+                       QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
+                       QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime
+from qgis.PyQt.QtGui import QColor
 
 from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
 
@@ -224,7 +227,7 @@ class FeatureLayer(QObject, Logger):
         layer.setName(toc_name)
         layer.reload()
         layer.triggerRepaint()
-        
+
         self.deleteTemporaryIcons(layer)
         return layer
 
@@ -234,13 +237,86 @@ class FeatureLayer(QObject, Logger):
         if indicators:
             iface.layerTreeView().removeIndicator(node, indicators[0])
 
-    def setStyle(self, layer):
+    def setStyle(self, layer: QgsVectorLayer) -> None:
         """ Wczytanie stylu warstwy jeśli istnieje """
-        if not self.style:
+        if self.style:
+            document = QDomDocument()
+            document.setContent(self.style)
+            layer.importNamedStyle(document)
+        else:
+            self.apply_usemaps_style(layer)
+
+    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+        """ Odwzorowanie stylu 'style_web' z Usemaps na silnik QGIS """
+        data = self.metadata.get('data', {})
+        style_web = data.get('style_web', {})
+        if not style_web:
             return
-        document = QDomDocument()
-        document.setContent(self.style)
-        layer.importNamedStyle(document)
+
+        color = next((style_web.get(k) for k in ('line-color', 'fill-color', 'circle-color') if style_web.get(k)), '#3388ff') \
+                if style_web.get('type') != 'svg' else QColor.fromHsv(hash(self.id) % 360, 160, 240).name()
+
+        geom_type = layer.geometryType()
+
+        if geom_type == QgsWkbTypes.PointGeometry:
+            symbol = QgsMarkerSymbol.createSimple({
+                'color': color,
+                'size': str(style_web.get('circle-radius', 3.0)),
+                'outline_style': 'no'
+            })
+        elif geom_type == QgsWkbTypes.LineGeometry:
+            symbol = QgsLineSymbol.createSimple({
+                'line_color': color,
+                'line_width': str(style_web.get('line-width', 1.0))
+            })
+        elif geom_type == QgsWkbTypes.PolygonGeometry:
+            symbol = QgsFillSymbol.createSimple({
+                'color': color,
+                'outline_color': style_web.get('fill-outline-color', '#000000'),
+                'outline_width': str(style_web.get('line-width', 0.2))
+            })
+        else:
+            return
+
+        symbol.setOpacity(style_web.get('fill-opacity', 1.0))
+        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+
+        if style_web.get('labels'):
+            self.apply_usemaps_labels(layer, style_web['labels'], data)
+
+    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: Dict[str, Any], data: Dict[str, Any]) -> None:
+        """ Konfiguracja etykiet """
+
+        # Wybór pola:
+        # Z listy zdefiniowanych atrybutów etykiet w stylu
+        # Pierwszy atrybut znaleziony w schemacie formularza (form_schema)
+        label_attr = next(
+            (a for a in labels_cfg.get('attributes', [])),
+            next((el.get('attribute') for group in data.get('form_schema', {}).get('elements', [])
+                  for el in group.get('elements', []) if el.get('attribute')), None)
+        )
+
+        if not label_attr:
+            return
+
+        settings = QgsPalLayerSettings()
+        settings.fieldName = label_attr
+
+        text_format = QgsTextFormat()
+        text_format.setSize(labels_cfg.get('font-size', 10))
+        text_format.setColor(QColor(labels_cfg.get('font-color', '#000000')))
+
+        # Obsługa efektu otoczki tekstu, jeśli włączona
+        if labels_cfg.get('stroke-visible'):
+            buffer = text_format.buffer()
+            buffer.setEnabled(True)
+            buffer.setSize(labels_cfg.get('stroke-width', 1))
+            buffer.setColor(QColor(labels_cfg.get('stroke-color', '#FFFFFF')))
+            text_format.setBuffer(buffer)
+
+        settings.setFormat(text_format)
+        layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
+        layer.setLabelsEnabled(True)
 
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
@@ -257,7 +333,7 @@ class FeatureLayer(QObject, Logger):
         QgsApplication.taskManager().addTask(self.task)
         self.message(
             self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.Success, duration=5)
-    
+
     def onReload(self):
         self._reload_layer_metadata()
         CONNECTION.post(
@@ -413,7 +489,7 @@ class FeatureLayer(QObject, Logger):
 
     def getFeaturesDbIds(self, qgis_ids, layer):
         return [f[self.datasource.id_column_name] for f in layer.dataProvider().getFeatures( QgsFeatureRequest().setFilterFids( qgis_ids ))]
-        
+
     def manageFeatures(self):
         layer = self.sender()
         edit_buffer = layer.editBuffer()
@@ -440,16 +516,16 @@ class FeatureLayer(QObject, Logger):
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
-    
+
     def afterModify(self, data: dict):
         if data.get("error"):
             self.message(data.get("error_message"), level=Qgis.Critical)
             return
-        
-        self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()), 
+
+        self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()),
                         level=Qgis.Success, duration=5)
         self.on_reload.emit(True)
-        
+
     def addFeatures(self, edit_buffer):
         """ Dodanie nowych obiektów do warstwy użytkownika """
         added_features = edit_buffer.addedFeatures().values()
@@ -535,7 +611,7 @@ class FeatureLayer(QObject, Logger):
                 })
 
         return features
-    
+
     def sanetize_data_type(self, value: Any) -> Any:
         if isinstance(value, QDateTime):
             value = value.toString('yyyy-MM-dd hh:mm:ss')
