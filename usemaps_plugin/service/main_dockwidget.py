@@ -158,6 +158,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.message(self.tr('Pobrano schemat warstw'))
 
+        self.refresh_layers()
+
 
     def add_layer_to_map(self, index):
         """
@@ -176,7 +178,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     def eventFilter(self, obj, event):
         """
-        Event obsługujący dwa wydarzenia: 
+        Event obsługujący dwa wydarzenia:
         1. dodawanie warstw/grup po przeciągnięciu na panel mapowy.
         2. dodawanie warstw/grup po dwukrotnym kliknięciu lewym przyciskiem myszy na drzewku warstw.
         """
@@ -211,7 +213,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     def handle_map_canvas_drop(self, event):
         """
-        Wywołuje dodanie upuszczonej warstwy/grupy do projektu. 
+        Wywołuje dodanie upuszczonej warstwy/grupy do projektu.
         """
         selected_indexes = self.layerTreeView.selectedIndexes()
 
@@ -235,7 +237,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             if layers_registry.isSystemLayer(layer):
                 layer_qgis_id = layer.id()
                 layer_id = mappings.get(layer_qgis_id)
+                if layer_id is None:
+                    continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                if not layer_class:
-                    return
-                layer_class.on_reload.emit(True)
+                if hasattr(layer_class, 'on_reload'):
+                    layer_class.on_reload.emit(True)
+                else:
+                    layer.triggerRepaint()
