@@ -5,7 +5,8 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsAttributeEditorContainer, QgsAttributeEditorField, QgsMapLayer, NULL, QgsFieldConstraints,
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
-                       QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes)
+                       QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
+                       QgsRendererCategory, QgsGraduatedSymbolRenderer, QgsRendererRange, QgsSymbol, QgsUnitTypes)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime
@@ -17,6 +18,15 @@ from ...tools.logger import Logger
 from .geojson import geojson2geom
 from ...tools.connection import CONNECTION
 from ...tools.project_variables import save_layer_mapping
+
+RASTER_ZOOM_LEVEL = {
+    0: 591657527.591555, 1: 295828763.795777, 2: 147914381.897889, 3: 73957190.948944,
+    4: 36978595.474472, 5: 18489297.737236, 6: 9244648.868618, 7: 4622324.434309,
+    8: 2311162.217155, 9: 1155581.108577, 10: 577790.554289, 11: 288895.277144,
+    12: 144447.638572, 13: 72223.819286, 14: 36111.909643, 15: 18055.954822,
+    16: 9027.977411, 17: 4513.988705, 18: 2256.994353, 19: 1128.497176,
+    20: 564.248588, 21: 282.124294, 22: 141.062147, 23: 70.5310735
+}
 
 class Datasource(QObject, Logger):
     """ Klasa bazowa dla źródeł danych systemowych """
@@ -246,57 +256,90 @@ class FeatureLayer(QObject, Logger):
         else:
             self.apply_usemaps_style(layer)
 
-    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+    def _create_qgis_symbol(self, style_dict: dict, geom_type: int) -> QgsSymbol:
         """ Odwzorowanie stylu 'style_web' z Usemaps na silnik QGIS """
+
+        color = QColor(next((style_dict.get(k) for k in ('fill-color', 'line-color', 'circle-color') \
+                             if style_dict.get(k)), '#3388ff'))
+
+        if geom_type == QgsWkbTypes.PolygonGeometry:
+            symbol = QgsFillSymbol.createSimple({
+                'color': color.name(),
+                'outline_color': style_dict.get('fill-outline-color', '#000000'),
+                'outline_width': str(style_dict.get('line-width', 0.2) * 0.75),
+                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+            })
+            symbol.setOpacity(style_dict.get('fill-opacity', 1.0))
+            symbol_layer = symbol.symbolLayer(0)
+            if symbol_layer:
+                symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+
+                outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
+                outline_color.setAlphaF(style_dict.get('fill-outline-opacity', 1.0))
+                symbol_layer.setStrokeColor(outline_color)
+
+                if style_dict.get('line-dash'):
+                    symbol_layer.setCustomDashVector(style_dict['line-dash'])
+                    symbol_layer.setUseCustomDashPattern(True)
+
+        elif geom_type == QgsWkbTypes.LineGeometry:
+            symbol = QgsLineSymbol.createSimple({
+                'line_color': color.name(),
+                'line_width': str(style_dict.get('line-width', 1.0) * 0.75),
+                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+            })
+            if style_dict.get('line-dash'):
+                symbol.symbolLayer(0).setCustomDashVector(style_dict['line-dash'])
+                symbol.symbolLayer(0).setUseCustomDashPattern(True)
+
+            symbol.setWidthUnit(QgsUnitTypes.RenderPoints)
+
+        elif geom_type == QgsWkbTypes.PointGeometry:
+            symbol = QgsMarkerSymbol.createSimple({
+                'color': color.name(),
+                'size': str(style_dict.get('circle-radius', 3.0) * 1.5),
+                'outline_style': 'no'
+            })
+            symbol.setSizeUnit(QgsUnitTypes.RenderPoints)
+            symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+        else:
+            return QgsSymbol.defaultSymbol(geom_type)
+
+        return symbol
+
+    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+        """ Aplikuje styl i poprawnie ustawia poziomy skalowe """
         data = self.metadata.get('data', {})
         style_web = data.get('style_web', {})
         if not style_web:
             return
 
-        color = next((style_web.get(k) for k in ('line-color', 'fill-color', 'circle-color') if style_web.get(k)), '#3388ff') \
-                if style_web.get('type') != 'svg' else QColor.fromHsv(hash(self.id) % 360, 160, 240).name()
+        if any(style_web.get(k) is not None for k in ('minzoom', 'maxzoom')):
+            layer.setScaleBasedVisibility(True)
 
-        geom_type = layer.geometryType()
+            if style_web.get('minzoom') is not None:
+                layer.setMinimumScale(RASTER_ZOOM_LEVEL.get(style_web['minzoom'], 0))
 
-        if geom_type == QgsWkbTypes.PointGeometry:
-            symbol = QgsMarkerSymbol.createSimple({
-                'color': color,
-                'size': str(style_web.get('circle-radius', 3.0)),
-                'outline_style': 'no'
-            })
-        elif geom_type == QgsWkbTypes.LineGeometry:
-            symbol = QgsLineSymbol.createSimple({
-                'line_color': color,
-                'line_width': str(style_web.get('line-width', 1.0))
-            })
-        elif geom_type == QgsWkbTypes.PolygonGeometry:
-            symbol = QgsFillSymbol.createSimple({
-                'color': color,
-                'outline_color': style_web.get('fill-outline-color', '#000000'),
-                'outline_width': str(style_web.get('line-width', 0.2))
-            })
-        else:
-            return
+            if style_web.get('maxzoom') is not None:
+                layer.setMaximumScale(RASTER_ZOOM_LEVEL.get(style_web['maxzoom'], 0))
 
-        symbol.setOpacity(style_web.get('fill-opacity', 1.0))
-        layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+        # Renderer i Symbolizacja
+        layer.setRenderer(QgsSingleSymbolRenderer(self._create_qgis_symbol(style_web, layer.geometryType())))
 
+        # Etykiety
         if style_web.get('labels'):
             self.apply_usemaps_labels(layer, style_web['labels'], data)
 
-    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: Dict[str, Any], data: Dict[str, Any]) -> None:
+        layer.triggerRepaint()
+
+    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: dict, data: dict) -> None:
         """ Konfiguracja etykiet """
+        label_attr = next((a for a in labels_cfg.get('attributes', []) if a), None)
 
-        # Wybór pola:
-        # Z listy zdefiniowanych atrybutów etykiet w stylu
-        # Pierwszy atrybut znaleziony w schemacie formularza (form_schema)
-        label_attr = next(
-            (a for a in labels_cfg.get('attributes', [])),
-            next((el.get('attribute') for group in data.get('form_schema', {}).get('elements', [])
-                  for el in group.get('elements', []) if el.get('attribute')), None)
-        )
+        should_enable = bool(data.get('labels_visible', False) and label_attr)
+        layer.setLabelsEnabled(should_enable)
 
-        if not label_attr:
+        if not should_enable:
             return
 
         settings = QgsPalLayerSettings()
@@ -304,19 +347,20 @@ class FeatureLayer(QObject, Logger):
 
         text_format = QgsTextFormat()
         text_format.setSize(labels_cfg.get('font-size', 10))
+        text_format.setSizeUnit(QgsUnitTypes.RenderPoints)
         text_format.setColor(QColor(labels_cfg.get('font-color', '#000000')))
 
-        # Obsługa efektu otoczki tekstu, jeśli włączona
-        if labels_cfg.get('stroke-visible'):
+        # Otoczka
+        if labels_cfg.get('stroke-visible', False):
             buffer = text_format.buffer()
             buffer.setEnabled(True)
-            buffer.setSize(labels_cfg.get('stroke-width', 1))
+            buffer.setSize(labels_cfg.get('stroke-width', 1.0))
+            buffer.setSizeUnit(QgsUnitTypes.RenderPoints)
             buffer.setColor(QColor(labels_cfg.get('stroke-color', '#FFFFFF')))
             text_format.setBuffer(buffer)
 
         settings.setFormat(text_format)
         layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
-        layer.setLabelsEnabled(True)
 
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
