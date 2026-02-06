@@ -44,7 +44,7 @@ class ServiceProvider():
 
             projects_res = CONNECTION.get('/api/v2/projects', sync=True)
             if isinstance(projects_res, dict) and 'data' in projects_res:
-                self.dockwidget.load_projects_to_treeview(projects_res['data'])
+                self.dockwidget.load_projects_to_tableview(projects_res['data'])
         else:
             # Rozłączono z serwerem lub błąd połączenia
 

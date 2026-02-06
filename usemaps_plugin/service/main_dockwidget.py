@@ -54,9 +54,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
 
-        self.mapTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.mapTableView.setSortingEnabled(True)
 
-        self.mapTreeView.doubleClicked.connect(self.add_project_to_qgis)
+        self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
 
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.setText("  " + self.refreshButton.text())
@@ -244,7 +244,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         res = CONNECTION.get('/api/v2/projects', sync=True)
         if isinstance(res, dict) and 'data' in res:
-            self.load_projects_to_treeview(res['data'])
+            self.load_projects_to_tableview(res['data'])
 
         mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
@@ -261,21 +261,68 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if text:
             self.mapTreeView.expandAll()
 
-    def load_projects_to_treeview(self, projects_data: list):
-        """Wypełnia zakładkę danymi z endpointu /projects."""
-        projects_data.sort(key=lambda x: x.get('last_saved_at') or '', reverse=True)
+    def load_projects_to_tableview(self, projects_data: list):
+        """Wypełnia zakładkę Mapy danymi z endpointu /projects."""
+        model = QStandardItemModel(0, 4)
+        model.setHorizontalHeaderLabels(['', 'Nazwa', 'Właściciel', 'Data ostatniej edycji'])
+        self.projects_proxy_model.setSourceModel(model)
 
-        tree_model = QStandardItemModel()
-        self.projects_proxy_model.setSourceModel(tree_model)
+        # Pobranie danych aktualnego uzytkownika
+        current_data = (CONNECTION.get('/api/users/current_user', sync=True) or {}).get('data', {})
+        c_id = current_data.get('id')
+        c_name = current_data.get('name', 'Brak informacji')
+
+        # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
+        users = {
+            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', 'Brak informacji'))
+            for uid in {p.get('owner') for p in projects_data if p.get('owner')}
+        }
 
         for p in projects_data:
-            item = QStandardItem(p['name'])
-            item.setData(p, Qt.UserRole + 1)
-            tree_model.invisibleRootItem().appendRow(item)
+            role = p.get('role')
+            owner = p.get('owner')
 
-        self.mapTreeView.setModel(self.projects_proxy_model)
-        self.mapTreeView.setHeaderHidden(True)
-        self.mapTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+            # Logika ikon
+            if role == 'default':
+                icon_file = 'domyslna.svg'
+            elif role == 'predefined':
+                icon_file = 'predefiniowana.svg'
+            elif owner is not None and c_id is not None and str(owner) == str(c_id):
+                icon_file = 'moja.svg'
+            else:
+                icon_file = 'udostepniona.svg'
+
+            type_item = QStandardItem()
+            type_item.setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
+            type_item.setData(p, Qt.UserRole + 1)
+
+            row = [
+                QStandardItem(),
+                QStandardItem(p.get('name', '')),
+                QStandardItem(users.get(owner, 'Brak informacji')),
+                QStandardItem(p.get('last_saved_at', '').replace('T', ' ')[:16])
+            ]
+
+            row[0].setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
+
+            for item in row:
+                item.setData(p, Qt.UserRole + 1)
+
+            model.appendRow(row)
+
+        self.mapTableView.setModel(self.projects_proxy_model)
+        self.mapTableView.setSortingEnabled(True)
+        header = self.mapTableView.horizontalHeader()
+        header.setSortIndicator(3, Qt.DescendingOrder)
+        self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        self.mapTableView.setColumnWidth(0, 25)
+        self.mapTableView.setColumnWidth(1, 220)
+        self.mapTableView.setColumnWidth(2, 125)
+        self.mapTableView.setColumnWidth(3, 60)
+
+        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu (snapshot) do QGIS."""
