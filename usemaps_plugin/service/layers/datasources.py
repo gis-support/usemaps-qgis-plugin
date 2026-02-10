@@ -6,7 +6,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory, QgsGraduatedSymbolRenderer, QgsRendererRange, QgsSymbol, QgsUnitTypes)
+                       QgsRendererCategory, QgsGraduatedSymbolRenderer, QgsRendererRange, QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime
@@ -314,17 +314,54 @@ class FeatureLayer(QObject, Logger):
         if not style_web:
             return
 
+        # Poziomy skalowe
         if any(style_web.get(k) is not None for k in ('minzoom', 'maxzoom')):
             layer.setScaleBasedVisibility(True)
+            layer.setMinimumScale(RASTER_ZOOM_LEVEL.get(style_web.get('minzoom'), 0))
+            layer.setMaximumScale(RASTER_ZOOM_LEVEL.get(style_web.get('maxzoom'), 0))
 
-            if style_web.get('minzoom') is not None:
-                layer.setMinimumScale(RASTER_ZOOM_LEVEL.get(style_web['minzoom'], 0))
+        geom_type = layer.geometryType()
 
-            if style_web.get('maxzoom') is not None:
-                layer.setMaximumScale(RASTER_ZOOM_LEVEL.get(style_web['maxzoom'], 0))
+        default_symbol = self._create_qgis_symbol(style_web, geom_type)
 
-        # Renderer i Symbolizacja
-        layer.setRenderer(QgsSingleSymbolRenderer(self._create_qgis_symbol(style_web, layer.geometryType())))
+        # Sprawdzenie czy symbolizacja złozona
+        if style_web.get('ranges', {}).get('values') or style_web.get('uniques', {}).get('values'):
+
+            root_rule = QgsRuleBasedRenderer.Rule(None) # Render opraty na regułach
+
+            # Obsługa stopniowej
+            if style_web.get('ranges', {}).get('values'):
+                prop = style_web['ranges'].get('property')
+                for r in style_web['ranges']['values']:
+                    rule = QgsRuleBasedRenderer.Rule(
+                        self._create_qgis_symbol(r, geom_type),
+                        0, 0, f'"{prop}" >= {r["min-value"]} AND "{prop}" <= {r["max-value"]}',
+                        r.get('label', '')
+                    )
+                    root_rule.appendChild(rule)
+
+            # Obsługa unikalnej
+            elif style_web.get('uniques', {}).get('values'):
+                prop = style_web['uniques'].get('property')
+                for k, v in style_web['uniques']['values'].items():
+                    val = v.get('value', k)
+                    val_filter = f"'{val}'" if isinstance(val, str) else str(val)
+                    rule = QgsRuleBasedRenderer.Rule(
+                        self._create_qgis_symbol(v, geom_type),
+                        0, 0, f'"{prop}" = {val_filter}',
+                        v.get('label', str(val))
+                    )
+                    root_rule.appendChild(rule)
+
+            # Pozostałe które nie weszły do reguły
+            else_rule = QgsRuleBasedRenderer.Rule(default_symbol, 0, 0, None, self.tr("Pozostałe"))
+            else_rule.setIsElse(True)
+            root_rule.appendChild(else_rule)
+
+            layer.setRenderer(QgsRuleBasedRenderer(root_rule))
+        else:
+            # Jeśli brak klasyfikacji, używamy standardowego Single Symbol
+            layer.setRenderer(QgsSingleSymbolRenderer(default_symbol))
 
         # Etykiety
         if style_web.get('labels'):
