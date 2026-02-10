@@ -54,9 +54,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
 
-        self.mapTableView.setSortingEnabled(True)
-
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
+        self._sort_state = {}
 
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.setText("  " + self.refreshButton.text())
@@ -279,25 +278,20 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         }
 
         for p in projects_data:
-            role = p.get('role')
-            owner = p.get('owner')
+            role, owner = p.get('role'), p.get('owner')
 
             # Logika ikon
             if role == 'default':
-                icon_file = 'domyslna.svg'
+                icon_file, label = 'domyslna.svg', 'Domyślna'
             elif role == 'predefined':
-                icon_file = 'predefiniowana.svg'
+                icon_file, label = 'predefiniowana.svg', 'Predefiniowana'
             elif owner is not None and c_id is not None and str(owner) == str(c_id):
-                icon_file = 'moja.svg'
+                icon_file, label = 'moja.svg', 'Moja'
             else:
-                icon_file = 'udostepniona.svg'
-
-            type_item = QStandardItem()
-            type_item.setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
-            type_item.setData(p, Qt.UserRole + 1)
+                icon_file, label = 'udostepniona.svg', 'Udostępniona'
 
             row = [
-                QStandardItem(),
+                QStandardItem(label),
                 QStandardItem(p.get('name', '')),
                 QStandardItem(users.get(owner, 'Brak informacji')),
                 QStandardItem(p.get('last_saved_at', '').replace('T', ' ')[:16])
@@ -310,11 +304,18 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
             model.appendRow(row)
 
+        header = self.mapTableView.horizontalHeader()
+        header.sectionClicked.connect(self._handle_header_click)
         self.mapTableView.setModel(self.projects_proxy_model)
         self.mapTableView.setSortingEnabled(True)
         header = self.mapTableView.horizontalHeader()
+
+        # Ustawienie domyślnego sortowania po dacie malejąco
         header.setSortIndicator(3, Qt.DescendingOrder)
         self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+
+        # Reset stanów sortowania
+        self._sort_state = {i: 0 for i in range(4)}
 
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
         self.mapTableView.setColumnWidth(0, 25)
@@ -323,6 +324,36 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapTableView.setColumnWidth(3, 60)
 
         self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+    def _handle_header_click(self, logical_index):
+        header = self.mapTableView.horizontalHeader()
+
+        # Aktualny stan dla danej kolumny
+        current_state = self._sort_state.get(logical_index, 0)
+
+        # Przejście do następnego stanu 0 -> 1 -> 2 -> 0
+        next_state = (current_state + 1) % 3
+        self._sort_state[logical_index] = next_state
+
+        # Reset stanów innych kolumn
+        for col in self._sort_state:
+            if col != logical_index:
+                self._sort_state[col] = 0
+
+        if next_state == 0:
+            # Powrót do domyślnego sortowania po dacie malejąco
+            header.setSortIndicator(3, Qt.DescendingOrder)
+            self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+
+        elif next_state == 1:
+            # Sortowanie rosnąco
+            header.setSortIndicator(logical_index, Qt.AscendingOrder)
+            self.projects_proxy_model.sort(logical_index, Qt.AscendingOrder)
+
+        else:
+            # Sortowanie malejąco
+            header.setSortIndicator(logical_index, Qt.DescendingOrder)
+            self.projects_proxy_model.sort(logical_index, Qt.DescendingOrder)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu (snapshot) do QGIS."""
