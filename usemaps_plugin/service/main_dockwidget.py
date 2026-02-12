@@ -53,6 +53,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.projects_proxy_model = QSortFilterProxyModel()
         self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
+        self.projects_proxy_model.setFilterKeyColumn(-1)
 
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
@@ -257,8 +258,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
     def filter_projects_view(self, text):
         self.projects_proxy_model.setFilterFixedString(text)
-        if text:
-            self.mapTreeView.expandAll()
 
     def load_projects_to_tableview(self, projects_data: list):
         """Wypełnia zakładkę Mapy danymi z endpointu /projects."""
@@ -331,8 +330,12 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         # Aktualny stan dla danej kolumny
         current_state = self._sort_state.get(logical_index, 0)
 
-        # Przejście do następnego stanu 0 -> 1 -> 2 -> 0
-        next_state = (current_state + 1) % 3
+        if logical_index == 3:
+            next_state = 2 if current_state == 1 else 1
+        else:
+            # Przejście do następnego stanu 0 -> 1 -> 2 -> 0
+            next_state = (current_state + 1) % 3
+
         self._sort_state[logical_index] = next_state
 
         # Reset stanów innych kolumn
