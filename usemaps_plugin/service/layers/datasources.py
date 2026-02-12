@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 from typing import List, Iterable, Any, Dict
 from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsEditFormConfig, QgsEditorWidgetSetup,
@@ -6,10 +7,10 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory, QgsGraduatedSymbolRenderer, QgsRendererRange, QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
-from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime
+from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
 from qgis.PyQt.QtGui import QColor
 
 from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
@@ -269,7 +270,8 @@ class FeatureLayer(QObject, Logger):
                 'outline_width': str(style_dict.get('line-width', 0.2) * 0.75),
                 'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
             })
-            symbol.setOpacity(style_dict.get('fill-opacity', 1.0))
+            symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+
             symbol_layer = symbol.symbolLayer(0)
             if symbol_layer:
                 symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
@@ -293,6 +295,14 @@ class FeatureLayer(QObject, Logger):
                 symbol.symbolLayer(0).setUseCustomDashPattern(True)
 
             symbol.setWidthUnit(QgsUnitTypes.RenderPoints)
+
+            opacity = style_dict.get('line-opacity')
+            if opacity is None:
+                opacity = style_dict.get('opacity')
+            if opacity is None:
+                opacity = style_dict.get('fill-opacity')
+
+            symbol.setOpacity(float(opacity) if opacity is not None else 1.0)
 
         elif geom_type == QgsWkbTypes.PointGeometry:
             symbol = QgsMarkerSymbol.createSimple({
@@ -322,43 +332,138 @@ class FeatureLayer(QObject, Logger):
 
         geom_type = layer.geometryType()
 
+        # Symbol domyślny
         default_symbol = self._create_qgis_symbol(style_web, geom_type)
 
-        # Sprawdzenie czy symbolizacja złozona
-        if style_web.get('ranges', {}).get('values') or style_web.get('uniques', {}).get('values'):
+        ranges_config = style_web.get('ranges', {})
+        uniques_config = style_web.get('uniques', {})
 
-            root_rule = QgsRuleBasedRenderer.Rule(None) # Render opraty na regułach
+        # Obsługa stopniowej
+        if ranges_config.get('values'):
+            root_rule = QgsRuleBasedRenderer.Rule(None)
+            prop = ranges_config.get('property')
 
-            # Obsługa stopniowej
-            if style_web.get('ranges', {}).get('values'):
-                prop = style_web['ranges'].get('property')
-                for r in style_web['ranges']['values']:
-                    rule = QgsRuleBasedRenderer.Rule(
-                        self._create_qgis_symbol(r, geom_type),
-                        0, 0, f'"{prop}" >= {r["min-value"]} AND "{prop}" <= {r["max-value"]}',
-                        r.get('label', '')
-                    )
-                    root_rule.appendChild(rule)
+            # Ustalanie prawdziwej nazwy pola
+            field_name = prop
+            if prop.startswith('mvt_int_') and layer.fields().indexFromName(prop) == -1:
+                clean_prop = prop.replace('mvt_int_', '')
+                if layer.fields().indexFromName(clean_prop) != -1:
+                    field_name = clean_prop
 
-            # Obsługa unikalnej
-            elif style_web.get('uniques', {}).get('values'):
-                prop = style_web['uniques'].get('property')
-                for k, v in style_web['uniques']['values'].items():
-                    val = v.get('value', k)
-                    val_filter = f"'{val}'" if isinstance(val, str) else str(val)
-                    rule = QgsRuleBasedRenderer.Rule(
-                        self._create_qgis_symbol(v, geom_type),
-                        0, 0, f'"{prop}" = {val_filter}',
-                        v.get('label', str(val))
-                    )
-                    root_rule.appendChild(rule)
+            # Sprawdzenie typu pola w QGIS
+            field_idx = layer.fields().indexFromName(field_name)
+            field_type = None
+            if field_idx != -1:
+                field_type = layer.fields().field(field_idx).type()
+
+            for r in ranges_config['values']:
+                symbol = self._create_qgis_symbol(r, geom_type)
+                label = r.get('label', '')
+                min_val_raw = r["min-value"]
+                max_val_raw = r["max-value"]
+
+                expression = ""
+
+                # Pole typu TIME
+                if field_type == QVariant.Time:
+                    t_min = datetime.fromtimestamp(min_val_raw)
+                    t_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"make_time({t_min.hour}, {t_min.minute}, {t_min.second})"
+                    max_str = f"make_time({t_max.hour}, {t_max.minute}, {t_max.second})"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Pole typu DATE
+                elif field_type == QVariant.Date:
+                    d_min = datetime.fromtimestamp(min_val_raw)
+                    d_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"to_date('{d_min.strftime('%Y-%m-%d')}')"
+                    max_str = f"to_date('{d_max.strftime('%Y-%m-%d')}')"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Pole typu DATETIME
+                elif field_type == QVariant.DateTime:
+                    dt_min = datetime.fromtimestamp(min_val_raw)
+                    dt_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"to_datetime('{dt_min.strftime('%Y-%m-%d %H:%M:%S')}')"
+                    max_str = f"to_datetime('{dt_max.strftime('%Y-%m-%d %H:%M:%S')}')"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Zwykłe liczby (Int/Double)
+                else:
+                    expression = f'"{field_name}" >= {min_val_raw} AND "{field_name}" <= {max_val_raw}'
+
+                rule = QgsRuleBasedRenderer.Rule(symbol)
+                rule.setFilterExpression(expression)
+                rule.setLabel(str(label))
+                root_rule.appendChild(rule)
 
             # Pozostałe które nie weszły do reguły
-            else_rule = QgsRuleBasedRenderer.Rule(default_symbol, 0, 0, None, self.tr("Pozostałe"))
+            else_rule = QgsRuleBasedRenderer.Rule(default_symbol.clone())
             else_rule.setIsElse(True)
+            else_rule.setLabel(self.tr("Pozostałe"))
             root_rule.appendChild(else_rule)
 
             layer.setRenderer(QgsRuleBasedRenderer(root_rule))
+
+        # Obsługa unikalnej
+        elif uniques_config.get('values'):
+            prop = uniques_config.get('property')
+            categories_list = []
+
+            # Typ pola
+            field_idx = layer.fields().indexFromName(prop)
+            field_type = None
+            if field_idx != -1:
+                field_type = layer.fields().field(field_idx).type()
+
+            for k, v in uniques_config['values'].items():
+                symbol = self._create_qgis_symbol(v, geom_type)
+                val = v.get('value', k)
+                label = str(v.get('label', str(val)))
+
+                converted_val = val
+
+                # Konwersja String -> Typ QGIS dla unikalnych wartości
+                if isinstance(val, str):
+                    # Czas
+                    if field_type == QVariant.Time:
+                        t = QTime.fromString(val, "HH:mm:ss")
+                        if not t.isValid():
+                            t = QTime.fromString(val, "HH:mm")
+                        if t.isValid():
+                            converted_val = t
+
+                    # Data
+                    elif field_type == QVariant.Date:
+                        d = QDate.fromString(val, "yyyy-MM-dd")
+                        if not d.isValid():
+                            d = QDate.fromString(val, "dd-MM-yyyy")
+                        if d.isValid():
+                            converted_val = d
+
+                    # Data i Czas
+                    elif field_type == QVariant.DateTime:
+                        dt = QDateTime.fromString(val, "dd-MM-yyyy HH:mm")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "yyyy-MM-dd HH:mm:ss")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "yyyy-MM-dd HH:mm")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "dd-MM-yyyy HH:mm:ss")
+                        if dt.isValid():
+                            converted_val = dt
+
+                categories_list.append(QgsRendererCategory(converted_val, symbol, label))
+
+            categories_list.append(QgsRendererCategory(None, default_symbol.clone(), self.tr("Pozostałe")))
+
+            if categories_list:
+                renderer = QgsCategorizedSymbolRenderer(prop, categories_list)
+                renderer.setSourceSymbol(default_symbol.clone())
+                layer.setRenderer(renderer)
+            else:
+                layer.setRenderer(QgsSingleSymbolRenderer(default_symbol))
+
         else:
             # Jeśli brak klasyfikacji, używamy standardowego Single Symbol
             layer.setRenderer(QgsSingleSymbolRenderer(default_symbol))
