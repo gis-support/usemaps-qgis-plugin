@@ -55,6 +55,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
         self.projects_proxy_model.setFilterKeyColumn(-1)
 
+        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
@@ -167,7 +168,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.layerTreeView.setModel(self.proxy_model)
         self.layerTreeView.setHeaderHidden(True)
         self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.message(self.tr('Pobrano schemat warstw'))
+        self.message(self.tr('Pobrano schemat warstw'), duration=3)
 
 
     def add_layer_to_map(self, index):
@@ -327,36 +328,29 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def _handle_header_click(self, logical_index):
         header = self.mapTableView.horizontalHeader()
 
-        # Aktualny stan dla danej kolumny
-        current_state = self._sort_state.get(logical_index, 0)
-
         if logical_index == 3:
-            next_state = 2 if current_state == 1 else 1
+            # Kolumna daty tylko 2 stany (malejąco <-> rosnąco)
+            next_state = 2 if self._sort_state.get(3, 0) == 1 else 1
         else:
-            # Przejście do następnego stanu 0 -> 1 -> 2 -> 0
-            next_state = (current_state + 1) % 3
+            # Pozostałe kolumny 3 stany (0 -> 1 -> 2 -> 0)
+            next_state = (self._sort_state.get(logical_index, 0) + 1) % 3
 
         self._sort_state[logical_index] = next_state
 
-        # Reset stanów innych kolumn
-        for col in self._sort_state:
+        for col in list(self._sort_state.keys()):
             if col != logical_index:
                 self._sort_state[col] = 0
 
         if next_state == 0:
-            # Powrót do domyślnego sortowania po dacie malejąco
+            # Reset do stanu 0 powrót do sortowania po najnowszej dacie
             header.setSortIndicator(3, Qt.DescendingOrder)
             self.projects_proxy_model.sort(3, Qt.DescendingOrder)
-
-        elif next_state == 1:
-            # Sortowanie rosnąco
-            header.setSortIndicator(logical_index, Qt.AscendingOrder)
-            self.projects_proxy_model.sort(logical_index, Qt.AscendingOrder)
-
+            self._sort_state[3] = 2
         else:
-            # Sortowanie malejąco
-            header.setSortIndicator(logical_index, Qt.DescendingOrder)
-            self.projects_proxy_model.sort(logical_index, Qt.DescendingOrder)
+            # Ustawienie wskazanego sortowania
+            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            header.setSortIndicator(logical_index, order)
+            self.projects_proxy_model.sort(logical_index, order)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu (snapshot) do QGIS."""
@@ -402,4 +396,4 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
 
         process_items(layers_list, root_group)
-        self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"))
+        self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"), duration=3)
