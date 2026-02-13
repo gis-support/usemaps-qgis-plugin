@@ -10,5 +10,6 @@
         <file>widget_settings.svg</file>
         <file>widget_connect.svg</file>
         <file>widget_disconnect.svg</file>
+        <file>export.svg</file>
     </qresource>
 </RCC>
