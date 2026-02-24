@@ -157,7 +157,7 @@ class Connection(QObject, Logger):
                        endpoint: str, 
                        content_type: str = 'application/json', 
                        with_token: bool = True) -> QNetworkRequest:
-        request = QNetworkRequest(QUrl(f"{self._getHost().rstrip('/')}/{endpoint.lstrip('/')}"))
+        request = QNetworkRequest(QUrl(urllib.parse.urljoin(self._getHost(), endpoint)))
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, content_type)
         request.setRawHeader(b'X-User-Agent', b'qgis_gs')
         if with_token and self.token:
