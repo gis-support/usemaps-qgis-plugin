@@ -7,7 +7,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsRuleBasedLabeling)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -474,35 +474,61 @@ class FeatureLayer(QObject, Logger):
 
         layer.triggerRepaint()
 
-    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: dict, data: dict) -> None:
+    def _create_label_settings(self, labels_cfg: dict, geom_type: int) -> QgsPalLayerSettings:
         """ Konfiguracja etykiet """
-        label_attr = next((a for a in labels_cfg.get('attributes', []) if a), None)
-
-        should_enable = bool(data.get('labels_visible', False) and label_attr)
-        layer.setLabelsEnabled(should_enable)
-
-        if not should_enable:
-            return
-
         settings = QgsPalLayerSettings()
-        settings.fieldName = label_attr
+
+        fields_list = [f'"{atr}"' for atr in labels_cfg.get('attributes', []) if atr]
+
+        # Gdy atrybutów w etykiecie web jest więcej niż 1
+        if len(fields_list) > 1:
+            settings.isExpression = True
+            settings.fieldName = "concat(" + ", ' ', ".join(fields_list) + ")"
+        else:
+            settings.fieldName = next((atr for atr in labels_cfg.get('attributes', []) if atr), '')
 
         text_format = QgsTextFormat()
-        text_format.setSize(labels_cfg.get('font-size', 10))
+        text_format.setSize(labels_cfg.get('font-size', 12) * 0.85)
         text_format.setSizeUnit(QgsUnitTypes.RenderPoints)
         text_format.setColor(QColor(labels_cfg.get('font-color', '#000000')))
 
-        # Otoczka
+        if labels_cfg.get('font-weight') == 'bold':
+            font = text_format.font()
+            font.setBold(True)
+            text_format.setFont(font)
+
         if labels_cfg.get('stroke-visible', False):
             buffer = text_format.buffer()
             buffer.setEnabled(True)
-            buffer.setSize(labels_cfg.get('stroke-width', 1.0))
-            buffer.setSizeUnit(QgsUnitTypes.RenderPoints)
             buffer.setColor(QColor(labels_cfg.get('stroke-color', '#FFFFFF')))
+            buffer.setSize(labels_cfg.get('stroke-width', 1.0) * 0.75)
+            buffer.setSizeUnit(QgsUnitTypes.RenderPoints)
             text_format.setBuffer(buffer)
 
         settings.setFormat(text_format)
-        layer.setLabeling(QgsVectorLayerSimpleLabeling(settings))
+
+        # Offsety
+        settings.xOffset = labels_cfg.get('offset-x', 0) * 0.75
+        settings.yOffset = labels_cfg.get('offset-y', 0) * 0.75
+
+        # Pozycjonowanie zależne od geometrii
+        if geom_type == QgsWkbTypes.PolygonGeometry:
+            settings.placement = QgsPalLayerSettings.AroundPoint
+        elif geom_type == QgsWkbTypes.LineGeometry:
+            settings.placement = QgsPalLayerSettings.Line
+            settings.placementFlags = QgsPalLayerSettings.OnLine | QgsPalLayerSettings.MapOrientation
+
+        return settings
+
+    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: dict, data: dict) -> None:
+        """ Aplikuje etykietowanie """
+        if labels_cfg and any(labels_cfg.get('attributes', [])):
+            layer.setLabeling(QgsVectorLayerSimpleLabeling(
+                self._create_label_settings(labels_cfg, layer.geometryType())
+            ))
+            layer.setLabelsEnabled(True)
+        else:
+            layer.setLabelsEnabled(False)
 
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
