@@ -218,15 +218,17 @@ class FeatureLayer(QObject, Logger):
         self.setLayer(layer)
         if group is None:
             QgsProject.instance().addMapLayer(layer)
+            node = QgsProject.instance().layerTreeRoot().findLayer(layer.id())
         else:
             QgsProject.instance().addMapLayer(layer, False)
-            group.addLayer(layer)
+            node = group.addLayer(layer)
+
         layer.setName(toc_name)
         layer.reload()
         layer.triggerRepaint()
 
         self.deleteTemporaryIcons(layer)
-        return layer
+        return node
 
     def deleteTemporaryIcons(self, layer):
         node = QgsProject.instance().layerTreeRoot().findLayer(layer.id())
