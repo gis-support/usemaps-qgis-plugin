@@ -26,10 +26,10 @@ class UsemapsPlugin:
 
     def install_translation(self):
         locale = QSettings().value('locale/userLocale')[0:2]
-        if not locale or locale not in ["pl", "en"]:
-            locale = "en"
         self.translator = QTranslator()
         i18n_path = os.path.join(self.plugin_dir, "i18n", f"usemaps_plugin_{locale}.qm")
+        if not os.path.exists(i18n_path):
+            i18n_path = os.path.join(self.plugin_dir, "i18n", "usemaps_plugin_en.qm")
         self.translator.load(i18n_path)
         QCoreApplication.installTranslator(self.translator)
 
