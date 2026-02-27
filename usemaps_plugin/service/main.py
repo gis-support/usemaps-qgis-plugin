@@ -52,8 +52,9 @@ class ServiceProvider():
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Zaloguj"))
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
+            self.dockwidget.offers_projects_reset()
             self.dockwidget.clear_treeview()
-        
+
         self.toggle_system_layers_readonly_mode()
 
 
@@ -74,7 +75,7 @@ class ServiceProvider():
 
                     if layer_permission['main_value'] == 2:
                         layer.setReadOnly(False)
-                    
+
                     else:
                         layer.setReadOnly(True)
 
