@@ -368,8 +368,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
             self.offers_projects_source_model.appendRow([
                 id_item,
-                QStandardItem(str(p.get(self.project_name_field, ''))),
-                QStandardItem(str(p.get(self.project_settings.get('status_attribute', 'status'), ''))),
+                QStandardItem(str(p.get(self.project_name_field, '') or "")),
+                QStandardItem(str(p.get(self.project_settings.get('status_attribute', 'status'), '') or "Brak danych")),
                 manager_item
             ])
 
