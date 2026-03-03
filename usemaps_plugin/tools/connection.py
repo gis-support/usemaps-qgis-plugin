@@ -87,7 +87,8 @@ class Connection(QObject, Logger):
             payload = {
                 'data': {
                     'credentials': {
-                        'token': settings.value('pass')
+                        'username_or_email': settings.value('user'),
+                        'password': settings.value('pass')
                     }
                 }
             }
