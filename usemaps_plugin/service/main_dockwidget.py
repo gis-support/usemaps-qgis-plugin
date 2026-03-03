@@ -379,10 +379,12 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 return
 
             for item in items:
-                sub_items = item.get('layers')
-
-                if sub_items is not None and item.get('type') == 'group':
-                    process_items(sub_items, parent_group.addGroup(item.get('name', 'Grupa')))
+                if (children := item.get('layers') or item.get('children')) is not None:
+                    sub_group = parent_group.addGroup(item.get('name', 'Grupa'))
+                    process_items(children, sub_group)
+                    sub_group.setItemVisibilityChecked(
+                        item.get('visible', True) and any(child.isVisible() for child in sub_group.children())
+                    )
                 else:
                     l_id = item.get('id') or item.get('layer_id')
                     if not l_id or item.get('layer_type') == 'mvt':
@@ -391,7 +393,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                                layers_registry.layers.get(str(l_id)) or
                                layers_registry.layers.get(int(l_id) if str(l_id).isdigit() else None))
                     if l_class:
-                        l_class.loadLayer(group=parent_group)
+                        if (node := l_class.loadLayer(group=parent_group)):
+                            node.setItemVisibilityChecked(item.get('visible', True))
                     else:
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
 
