@@ -74,15 +74,33 @@ class Connection(QObject, Logger):
 
     def authenticate(self) -> bool:
         """ Logowanie za pomocą REST API """
-        request = self._createRequest('/api/login', with_token=False)
         settings = QSettings()
         settings.beginGroup('gisbox/gisbox_connection')
-        payload = {
-            'data': {
-                'username_or_email': settings.value('user'),
-                'password': settings.value('pass')
+
+        is_external = all(
+            self.get('/api/license_manager/modules/EXTERNAL_LOGIN', sync=True).get('data', {}).get(k)
+            for k in ('configured', 'enabled')
+        )
+
+        if is_external:
+            endpoint = '/api/external_login'
+            payload = {
+                'data': {
+                    'credentials': {
+                        'token': settings.value('pass')
+                    }
+                }
             }
-        }
+        else:
+            endpoint = '/api/login'
+            payload = {
+                'data': {
+                    'username_or_email': settings.value('user'),
+                    'password': settings.value('pass')
+                }
+            }
+
+        request = self._createRequest(endpoint, with_token=False)
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
         status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
@@ -182,7 +200,7 @@ class Connection(QObject, Logger):
             reply.finished.connect(lambda: self._exec_callback(random_uuid))
 
         return reply
-    
+
     def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync:bool = False):
         request = self._createRequest(endpoint)
         if srid:
@@ -198,7 +216,7 @@ class Connection(QObject, Logger):
                 callback(response)
 
             return response
-        
+
         reply = self.MANAGER.post(request, data)
         response = reply.readAll()
 
