@@ -353,9 +353,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             self.projects_proxy_model.sort(logical_index, order)
 
     def add_project_to_qgis(self, index):
-        """Dodaje strukturę projektu (snapshot) do QGIS."""
-        source_index = self.projects_proxy_model.mapToSource(index)
-        project_info = source_index.data(Qt.UserRole + 1)
+        """Dodaje strukturę projektu do QGIS."""
+        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.UserRole + 1)
         if not project_info:
             return
 
@@ -375,6 +374,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         root_group = QgsProject.instance().layerTreeRoot().addGroup(project_info['name'])
 
         def process_items(items, parent_group):
+            """Funkcja tworząca podgrupy i ładująca warstwy."""
             if not isinstance(items, list):
                 return
 
@@ -398,5 +398,5 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                     else:
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
 
-        process_items(layers_list, root_group)
+        process_items(res['data'].get('layers', []), root_group)
         self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"), duration=3)
