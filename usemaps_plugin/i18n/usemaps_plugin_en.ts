@@ -128,7 +128,7 @@
     <message>
         <location filename="../service/layers/datasources.py" line="449"/>
         <source>Pomyślnie zmodyfikowano dane warstwy: {}</source>
-        <translation>Layer data modified successfully: {}, time: {}</translation>
+        <translation>Layer data modified successfully: {}</translation>
     </message>
 </context>
 <context>
