@@ -1,6 +1,6 @@
 import os.path
 
-from qgis.PyQt.QtCore import QCoreApplication, QUrl
+from qgis.PyQt.QtCore import QCoreApplication, QUrl, QSettings, QTranslator
 from qgis.PyQt.QtGui import QDesktopServices, QIcon
 from qgis.PyQt.QtWidgets import QAction, QDockWidget
 
@@ -17,12 +17,21 @@ class UsemapsPlugin:
 
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
-
+        self.install_translation()
         self.actions = []
         self.modules = []
         self.menu = self.tr(u'&Wtyczka Usemaps')
         self.toolbar = self.iface.addToolBar(PLUGIN_NAME)
         self.toolbar.addSeparator
+
+    def install_translation(self):
+        locale = QSettings().value('locale/userLocale')[0:2]
+        self.translator = QTranslator()
+        i18n_path = os.path.join(self.plugin_dir, "i18n", f"usemaps_plugin_{locale}.qm")
+        if not os.path.exists(i18n_path):
+            i18n_path = os.path.join(self.plugin_dir, "i18n", "usemaps_plugin_en.qm")
+        self.translator.load(i18n_path)
+        QCoreApplication.installTranslator(self.translator)
 
     def tr(self, message):
         return QCoreApplication.translate('UsemapsPlugin', message)

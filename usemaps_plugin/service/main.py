@@ -42,6 +42,9 @@ class ServiceProvider():
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Wyloguj"))
             self.dockwidget.refreshButton.setEnabled(True)
 
+            projects_res = CONNECTION.get('/api/v2/projects', sync=True)
+            if isinstance(projects_res, dict) and 'data' in projects_res:
+                self.dockwidget.load_projects_to_tableview(projects_res['data'])
         else:
             # Rozłączono z serwerem lub błąd połączenia
 
@@ -53,7 +56,8 @@ class ServiceProvider():
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
             self.dockwidget.clear_treeview()
-        
+            self.dockwidget.projects_proxy_model.sourceModel().clear()
+
         self.toggle_system_layers_readonly_mode()
 
 
@@ -74,7 +78,7 @@ class ServiceProvider():
 
                     if layer_permission['main_value'] == 2:
                         layer.setReadOnly(False)
-                    
+
                     else:
                         layer.setReadOnly(True)
 

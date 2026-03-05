@@ -140,10 +140,12 @@ class BaseMapLayer(BaseLayer):
         self.setLayer(layer)
         QgsProject.instance().addMapLayer(layer, False)
         if group is None:
-            QgsProject.instance().layerTreeRoot().insertChildNode(-1, QgsLayerTreeLayer(layer))
+            node = QgsLayerTreeLayer(layer)
+            QgsProject.instance().layerTreeRoot().insertChildNode(-1, node)
         else:
-            group.addLayer(layer)
+            node = group.addLayer(layer)
         self.deleteTemporaryIcons(layer)
+        return node
 
     def deleteTemporaryIcons(self, layer):
         node = QgsProject.instance().layerTreeRoot().findLayer(layer.id())
