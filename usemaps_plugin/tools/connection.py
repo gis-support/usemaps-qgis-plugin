@@ -39,8 +39,7 @@ class Connection(QObject, Logger):
         try:
             response_data = json.loads(bytearray(reply.readAll()))
         except Exception as e:
-            msg = QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e)
-            cls.message(msg, level=Qgis.MessageLevel.Critical, duration=5)
+            cls.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
             return
 
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
@@ -154,10 +153,11 @@ class Connection(QObject, Logger):
         self.current_user = None
         return True
 
-    def _createRequest(self, endpoint: str, content_type: str = 'application/json',
+    def _createRequest(self, 
+                       endpoint: str, 
+                       content_type: str = 'application/json', 
                        with_token: bool = True) -> QNetworkRequest:
-        host = self._getHost()
-        request = QNetworkRequest(QUrl(host + endpoint))
+        request = QNetworkRequest(QUrl(urllib.parse.urljoin(self._getHost(), endpoint)))
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, content_type)
         request.setRawHeader(b'X-User-Agent', b'qgis_gs')
         if with_token and self.token:
