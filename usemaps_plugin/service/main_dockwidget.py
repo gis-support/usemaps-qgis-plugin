@@ -27,6 +27,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.setupUi(self)
         self.loginSettingsDialog = LoginSettingsDialog(self)
 
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
+
         self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
         self.connectButton.setCheckable(True)
 
@@ -49,11 +52,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapBrowser.textChanged.connect(self.filter_projects_view)
 
         self.projects_proxy_model = QSortFilterProxyModel()
-        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
         self.projects_proxy_model.setFilterKeyColumn(-1)
 
-        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
@@ -62,8 +65,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.refreshButton.clicked.connect(self.refresh_layers)
         self.refreshButton.setEnabled(False)
 
-        self.mapCanvas = iface.mapCanvas()
-        self.mapCanvas.setAcceptDrops(True)
         self.mapCanvas.installEventFilter(self)
 
         iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
@@ -298,7 +299,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             row[0].setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
 
             for item in row:
-                item.setData(p, Qt.UserRole + 1)
+                item.setData(p, Qt.ItemDataRole.UserRole + 1)
 
             model.appendRow(row)
 
@@ -309,19 +310,19 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         header = self.mapTableView.horizontalHeader()
 
         # Ustawienie domyślnego sortowania po dacie malejąco
-        header.setSortIndicator(3, Qt.DescendingOrder)
-        self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+        header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+        self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
 
         # Reset stanów sortowania
         self._sort_state = {i: 0 for i in range(4)}
 
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.mapTableView.setColumnWidth(0, 25)
         self.mapTableView.setColumnWidth(1, 220)
         self.mapTableView.setColumnWidth(2, 125)
         self.mapTableView.setColumnWidth(3, 60)
 
-        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
 
     def _handle_header_click(self, logical_index):
         header = self.mapTableView.horizontalHeader()
@@ -341,18 +342,18 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if next_state == 0:
             # Reset do stanu 0 powrót do sortowania po najnowszej dacie
-            header.setSortIndicator(3, Qt.DescendingOrder)
-            self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+            header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+            self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
             self._sort_state[3] = 2
         else:
             # Ustawienie wskazanego sortowania
-            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            order = Qt.SortOrder.AscendingOrder if next_state == 1 else Qt.SortOrder.DescendingOrder
             header.setSortIndicator(logical_index, order)
             self.projects_proxy_model.sort(logical_index, order)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu do QGIS."""
-        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.UserRole + 1)
+        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.ItemDataRole.UserRole + 1)
         if not project_info:
             return
 
