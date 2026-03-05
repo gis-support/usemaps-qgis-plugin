@@ -232,15 +232,17 @@ class FeatureLayer(QObject, Logger):
         self.setLayer(layer)
         if group is None:
             QgsProject.instance().addMapLayer(layer)
+            node = QgsProject.instance().layerTreeRoot().findLayer(layer.id())
         else:
             QgsProject.instance().addMapLayer(layer, False)
-            group.addLayer(layer)
+            node = group.addLayer(layer)
+
         layer.setName(toc_name)
         layer.reload()
         layer.triggerRepaint()
 
         self.deleteTemporaryIcons(layer)
-        return layer
+        return node
 
     def deleteTemporaryIcons(self, layer):
         node = QgsProject.instance().layerTreeRoot().findLayer(layer.id())
@@ -540,13 +542,22 @@ class FeatureLayer(QObject, Logger):
         """ Sparsowanie i dodanie otrzymanych obiektów w sposób nieblokujący QGIS
         https://new.opengis.ch/2018/06/22/threads-in-pyqgis3/ """
         # Wymagane jest zapamiętanie zadania jako atrybut klasy
+        if not self.layers:
+            self.log("Ostrzeżenie: Otrzymano dane, ale warstwa nie jest już zarejestrowana.")
+            return
         self.task = QgsTask.fromFunction(
             self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
         QgsApplication.taskManager().addTask(self.task)
+
+        layer_name = self.layers[0].name() if self.layers else self.name
         self.message(
-            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(self.layers[0].name(), time.time() - self.time), level=Qgis.Success, duration=5)
+            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(
+                layer_name, time.time() - self.time),
+            level=Qgis.Success, duration=5)
 
     def onReload(self):
+        if not self.layers:
+            return
         self._reload_layer_metadata()
         CONNECTION.post(
             f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
