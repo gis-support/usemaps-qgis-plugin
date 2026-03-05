@@ -101,3 +101,5 @@ class ServiceProvider():
                         layer_class.setLayer(layer)
                     else:
                         layer_class.setLayer(layer, from_project=True)
+
+        self.dockwidget.refresh_layers()
