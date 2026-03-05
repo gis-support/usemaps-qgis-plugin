@@ -29,6 +29,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def __init__(self, parent=None):
         super(MainDockWidget, self).__init__(parent)
         self.setupUi(self)
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
+
         self.loginSettingsDialog = LoginSettingsDialog(self)
         self.importLayerDialog = ImportLayerDialog()
 
@@ -71,8 +74,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.addLayerButton.clicked.connect(self.importLayerDialog.show)
         self.addLayerButton.setEnabled(False)
 
-        self.mapCanvas = iface.mapCanvas()
-        self.mapCanvas.setAcceptDrops(True)
         self.mapCanvas.installEventFilter(self)
 
         apply_adaptive_palette(self)
