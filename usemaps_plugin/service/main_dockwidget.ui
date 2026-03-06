@@ -107,11 +107,21 @@
          <widget class="QLineEdit" name="projectBrowser">
           <property name="placeholderText">
            <string>Szukaj/filtruj projekty</string>
+      <widget class="QWidget" name="mapsTab">
+       <attribute name="title">
+        <string>Mapy</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QLineEdit" name="mapBrowser">
+          <property name="placeholderText">
+           <string>Szukaj/filtruj mapy</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QTableView" name="tableProjects">
+         <widget class="QTableView" name="mapTableView">
           <property name="selectionBehavior">
            <enum>QAbstractItemView::SelectRows</enum>
           </property>
