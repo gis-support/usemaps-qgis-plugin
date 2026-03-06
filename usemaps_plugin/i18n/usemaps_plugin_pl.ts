@@ -151,6 +151,56 @@
         <source>Pobrano schemat warstw</source>
         <translation>Pobrano schemat warstw</translation>
     </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="515"/>
+        <source>Nazwa</source>
+        <translation>Nazwa</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="516"/>
+        <source>Status</source>
+        <translation>Status</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="517"/>
+        <source>Kierownik</source>
+        <translation>Kierownik</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="604"/>
+        <source>Projekt '{project_name}' nie posiada powiązanych źródeł danych</source>
+        <translation>Projekt '{project_name}' nie posiada powiązanych źródeł danych</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="608"/>
+        <source>Projekt '{project_name}' nie posiada warstw dostępnych dla Ciebie</source>
+        <translation>Projekt '{project_name}' nie posiada warstw dostępnych dla Ciebie</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="623"/>
+        <source>Projekt '{project_name}' nie posiada warstw dostępnych dla Ciebie</source>
+        <translation>Projekt '{project_name}' nie posiada warstw dostępnych dla Ciebie</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="619"/>
+        <source>Błąd ładowania warstwy {getattr(layer_class, 'name', '?')}: {e}</source>
+        <translation>Błąd ładowania warstwy {getattr(layer_class, 'name', '?')}: {e}</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="625"/>
+        <source>Wczytano warstwy projektu: {}</source>
+        <translation>Wczytano warstwy projektu: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="493"/>
+        <source>Brak skonfigurowanego źródła projektów.</source>
+        <translation>Brak skonfigurowanego źródła projektów.</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="539"/>
+        <source>Brak danych</source>
+        <translation>Brak danych</translation>
+    </message>
 </context>
 <context>
     <name>NetworkHandler</name>
@@ -195,9 +245,9 @@
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="21"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami. 
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami.
 &lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami. 
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami.
 &lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
@@ -227,8 +277,18 @@
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="112"/>
-        <source>Odśwież warstwy</source>
-        <translation>Odśwież warstwy</translation>
+        <source>Odśwież</source>
+        <translation>Odśwież</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="142"/>
+        <source>Szukaj/filtruj projekty</source>
+        <translation>Szukaj/filtruj projekty</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="136"/>
+        <source>Projekty</source>
+        <translation>Projekty</translation>
     </message>
 </context>
 <context>
