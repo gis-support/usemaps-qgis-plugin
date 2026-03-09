@@ -274,11 +274,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         # Pobranie danych aktualnego uzytkownika
         current_data = (CONNECTION.get('/api/users/current_user', sync=True) or {}).get('data', {})
         c_id = current_data.get('id')
-        c_name = current_data.get('name', 'Brak informacji')
+        c_name = current_data.get('name', '')
 
         # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
         users = {
-            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', 'Brak informacji'))
+            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
             for uid in {p.get('owner') for p in projects_data if p.get('owner')}
         }
 
@@ -298,7 +298,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             row = [
                 QStandardItem(label),
                 QStandardItem(p.get('name', '')),
-                QStandardItem(users.get(owner, 'Brak informacji')),
+                QStandardItem(users.get(owner, '')),
                 QStandardItem(p.get('last_saved_at', '').replace('T', ' ')[:16])
             ]
 
