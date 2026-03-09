@@ -269,17 +269,22 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def load_projects_to_tableview(self, projects_data: list):
         """Wypełnia zakładkę Mapy danymi z endpointu /projects."""
         model = QStandardItemModel(0, 4)
-        model.setHorizontalHeaderLabels(['', 'Nazwa', 'Właściciel', 'Data ostatniej edycji'])
+        model.setHorizontalHeaderLabels([
+            '',
+            self.tr('Nazwa'),
+            self.tr('Właściciel'),
+            self.tr('Data ostatniej edycji')
+            ])
         self.projects_proxy_model.setSourceModel(model)
 
         # Pobranie danych aktualnego uzytkownika
         current_data = (CONNECTION.get('/api/users/current_user', sync=True) or {}).get('data', {})
         c_id = current_data.get('id')
-        c_name = current_data.get('name', 'Brak informacji')
+        c_name = current_data.get('name', '')
 
         # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
         users = {
-            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', 'Brak informacji'))
+            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
             for uid in {p.get('owner') for p in projects_data if p.get('owner')}
         }
 
@@ -299,7 +304,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             row = [
                 QStandardItem(label),
                 QStandardItem(p.get('name', '')),
-                QStandardItem(users.get(owner, 'Brak informacji')),
+                QStandardItem(users.get(owner, '')),
                 QStandardItem(p.get('last_saved_at', '').replace('T', ' ')[:16])
             ]
 
@@ -366,14 +371,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
         if not res or 'data' not in res:
-            self.message(self.tr("Błąd pobierania danych projektu"), level=Qgis.Warning)
+            self.message(self.tr("Błąd pobierania danych mapy"), level=Qgis.Warning)
             return
 
         data = res['data']
         layers_list = data.get('layers', [])
 
         if not layers_list:
-            self.message(self.tr("Projekt nie zawiera żadnych warstw."), level=Qgis.Info)
+            self.message(self.tr("Mapa nie zawiera żadnych warstw."), level=Qgis.Info)
             return
 
         # Tworzenie głównej grupy projektu w QGIS
@@ -405,4 +410,4 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
 
         process_items(res['data'].get('layers', []), root_group)
-        self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"), duration=3)
+        self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)
