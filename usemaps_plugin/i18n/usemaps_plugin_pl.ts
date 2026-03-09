@@ -151,6 +151,36 @@
         <source>Pobrano schemat warstw</source>
         <translation>Pobrano schemat warstw</translation>
     </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="268"/>
+        <source>Nazwa</source>
+        <translation>Nazwa</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="269"/>
+        <source>Właściciel</source>
+        <translation>Właściciel</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="270"/>
+        <source>Data ostatniej edycji</source>
+        <translation>Data ostatniej edycji</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="363"/>
+        <source>Błąd pobierania danych mapy</source>
+        <translation>Błąd pobierania danych mapy</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="370"/>
+        <source>Mapa nie zawiera żadnych warstw.</source>
+        <translation>Mapa nie zawiera żadnych warstw.</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="402"/>
+        <source>Zaimportowano mapę: {}</source>
+        <translation>Zaimportowano mapę: {}</translation>
+    </message>
 </context>
 <context>
     <name>NetworkHandler</name>
@@ -195,10 +225,8 @@
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="21"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami. 
-&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami. 
-&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Narzędzie pozwalające na wczytanie danych z Usemaps do QGIS i ich edycję wraz ze współpracownikami.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="41"/>
@@ -229,6 +257,21 @@
         <location filename="../service/main_dockwidget.ui" line="112"/>
         <source>Odśwież warstwy</source>
         <translation>Odśwież warstwy</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="103"/>
+        <source>Mapy</source>
+        <translation>Mapy</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="107"/>
+        <source>Szukaj/filtruj mapy</source>
+        <translation>Szukaj/filtruj mapy</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="120"/>
+        <source>Odśwież</source>
+        <translation>Odśwież</translation>
     </message>
 </context>
 <context>
