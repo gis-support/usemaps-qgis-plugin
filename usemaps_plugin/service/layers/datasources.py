@@ -265,7 +265,7 @@ class FeatureLayer(QObject, Logger):
         self.message(
             self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(
                 layer_name, time.time() - self.time),
-            level=Qgis.Success, duration=5)
+            level=Qgis.MessageLevel.Success, duration=5)
 
     def onReload(self):
         if not self.layers:
@@ -344,73 +344,49 @@ class FeatureLayer(QObject, Logger):
         layer.setFieldAlias(id_field, self.tr('Identyfikator'))
         config.setReadOnly(id_field, True)
 
-        if form_schema:
-            elements = form_schema.get('elements')
-
-            if elements is None:
-                return
-
-            field_id_map = {field.name(): field_id for field_id,
-                            field in enumerate(layer.fields())}
-
+        if form_schema and form_schema.get('elements'):
             config.clearTabs()
-            config.setLayout(QgsEditFormConfig.TabLayout)
+            config.setLayout(QgsEditFormConfig.EditorLayout.TabLayout)
 
-            for element in elements:
-                tab = QgsAttributeEditorContainer(element['label'], None)
-                tab.setIsGroupBox(False)
+            for element in form_schema['elements']:
+                tab = QgsAttributeEditorContainer(element.get('label', ''), None)
+                tab.setType(Qgis.AttributeEditorContainerType.Tab)
 
-                for idx, inner_element in enumerate(element['elements']):
-
+                for idx, inner_element in enumerate(element.get('elements', [])):
                     attr = inner_element['attribute']
-                    label = inner_element.get('label', '')
-
-                    field_id = field_id_map.get(attr)
-                    if field_id:
-                        layer.setFieldAlias(field_id, label)
-
-                        if inner_element.get('required', False) == True and not field_id == id_field:
+                    field_id = layer.fields().indexFromName(attr)
+                    
+                    if field_id != -1:
+                        layer.setFieldAlias(field_id, inner_element.get('label', ''))
+                        if inner_element.get('required') and field_id != id_field:
                             layer.setFieldConstraint(
                                 field_id,
-                                QgsFieldConstraints.ConstraintNotNull,
-                                QgsFieldConstraints.ConstraintStrengthHard,
+                                QgsFieldConstraints.Constraint.ConstraintNotNull,
+                                QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard
                             )
 
-                    default_value_policy = inner_element.get(
-                        'default_value_policy')
-                    if default_value_policy:
-                        self.default_values[attr] = default_value_policy['value']
+                    policy = inner_element.get('default_value_policy')
+                    if isinstance(policy, dict):
+                        self.default_values[attr] = policy.get('value')
 
-                    tab.addChildElement(
-                        QgsAttributeEditorField(attr, idx, tab))
+                    tab.addChildElement(QgsAttributeEditorField(attr, idx, tab))
                 config.addTab(tab)
 
-        attributes = self.datasource.attributes_schema['attributes']
-
-        for attribute in attributes:
+        for attribute in self.datasource.attributes_schema.get('attributes', []):
             field_id = layer.fields().indexFromName(attribute['name'])
             config.setReadOnly(field_id, attribute.get('read_only'))
-            attribute_type = attribute.get('type')
-
-            if attribute_type == 'dict':
-                allowed_values = attribute.get('allowed_values')
-                if allowed_values:
-                    dict_values = {value: value for value in allowed_values}
-                    self.setWidgetType(layer, dict_values, field_id)
-            elif attribute_type == 'relation':
-                if 'parent' in attribute['name']:
-                    continue
-                relation = attribute.get('relation')
-                related_datasource = relation.get('data_source')
-                related_attribute = relation.get('attribute')
-                representation = relation.get('representation')
-                if related_datasource and representation:
-                    relation_map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
-                        related_datasource, {}).get(related_attribute, {}).get(representation)
-                    dict_values = {data['text']: data['value']
-                                   for data in relation_map_values}
-                    if dict_values:
-                        self.setWidgetType(layer, dict_values, field_id)
+            
+            if attribute.get('type') == 'dict' and attribute.get('allowed_values'):
+                self.setWidgetType(layer, {v: v for v in attribute['allowed_values']}, field_id)
+            
+            elif attribute.get('type') == 'relation' and 'parent' not in attribute['name']:
+                relation = attribute.get('relation', {})
+                map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
+                    relation.get('data_source'), {}
+                ).get(relation.get('attribute'), {}).get(relation.get('representation'))
+                
+                if map_values:
+                    self.setWidgetType(layer, {d['text']: d['value'] for d in map_values}, field_id)
 
         layer.setEditFormConfig(config)
 
@@ -454,11 +430,11 @@ class FeatureLayer(QObject, Logger):
 
     def afterModify(self, data: dict):
         if data.get("error"):
-            self.message(data.get("error_message"), level=Qgis.Critical)
+            self.message(data.get("error_message"), level=Qgis.MessageLevel.Critical)
             return
 
         self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()),
-                        level=Qgis.Success, duration=5)
+                        level=Qgis.MessageLevel.Success, duration=5)
         self.on_reload.emit(True)
 
     def addFeatures(self, edit_buffer):
