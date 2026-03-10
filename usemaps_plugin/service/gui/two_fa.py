@@ -9,6 +9,7 @@ from qgis.PyQt.QtWidgets import QDialog
 from qgis.core import QgsNetworkAccessManager
 from qgis.core import Qgis
 from qgis.utils import iface
+from .adaptive_palette import apply_adaptive_palette
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'two_fa.ui'))
@@ -28,6 +29,8 @@ class TwoFADialog(QDialog, FORM_CLASS):
         self.buttonBox.accepted.connect(self.dialogAccepted)
         self.buttonBox.rejected.connect(self.dialogRejected)
         self.btSendAgain.clicked.connect(self.resendCode)
+
+        apply_adaptive_palette(self)
 
     def closeEvent(self, event):
         self.edCode.clear()

@@ -10,8 +10,10 @@ from qgis.core import QgsProject, Qgis
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
 from .gui.login_settings import LoginSettingsDialog
+from .gui.import_layer import ImportLayerDialog
 from ..tools.connection import CONNECTION
 from ..tools.project_variables import get_layer_mappings
+from .gui.adaptive_palette import apply_adaptive_palette
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -25,7 +27,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def __init__(self, parent=None):
         super(MainDockWidget, self).__init__(parent)
         self.setupUi(self)
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
+
         self.loginSettingsDialog = LoginSettingsDialog(self)
+        self.importLayerDialog = ImportLayerDialog()
 
         self.mapCanvas = iface.mapCanvas()
         self.mapCanvas.setAcceptDrops(True)
@@ -62,10 +68,16 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.setText("  " + self.refreshButton.text())
-        self.refreshButton.clicked.connect(self.refresh_layers)
+        self.refreshButton.clicked.connect(lambda: layers_registry.loadData(True))
         self.refreshButton.setEnabled(False)
 
+        self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
+        self.addLayerButton.clicked.connect(self.importLayerDialog.show)
+        self.addLayerButton.setEnabled(False)
+
         self.mapCanvas.installEventFilter(self)
+
+        apply_adaptive_palette(self)
 
         iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
         self.hide()
@@ -109,6 +121,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         else:
             self.layerTreeView.setModel(None)
 
+        self.addLayerButton.setEnabled(False)
 
     def add_layers_to_treeview(self, groups: list):
         """
@@ -120,6 +133,13 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         tree_model = QStandardItemModel()
         self.proxy_model.setSourceModel(tree_model)
         root_item = tree_model.invisibleRootItem()
+
+        is_admin = CONNECTION.current_user.get('is_admin', False) if CONNECTION.current_user else False
+        self.addLayerButton.setEnabled(is_admin)
+
+        self.addLayerButton.setToolTip(
+            "" if is_admin else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
+        )
 
         def add_layers(layers: list, group_item: QStandardItem):
 
@@ -256,7 +276,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 if layer_id is None:
                     continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                
+
                 if hasattr(layer_class, 'on_reload'):
                     layer_class.on_reload.emit(True)
                 else:
