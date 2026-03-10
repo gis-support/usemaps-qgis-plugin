@@ -1,19 +1,19 @@
 import os
 
-from PyQt5 import QtWidgets, uic
-from PyQt5.QtCore import pyqtSignal, QEvent
-from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent
+from qgis.PyQt import QtWidgets, uic
+from qgis.PyQt.QtCore import pyqtSignal, QEvent, Qt, QSortFilterProxyModel
+from qgis.PyQt.QtGui import QIcon, QDropEvent, QDragEnterEvent, QStandardItemModel, QStandardItem
 
-from PyQt5.Qt import QStandardItemModel, QStandardItem, QSortFilterProxyModel
 from qgis.utils import iface
-from qgis.PyQt.QtCore import Qt
 from qgis.core import QgsProject, Qgis
 
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
 from .gui.login_settings import LoginSettingsDialog
+from .gui.import_layer import ImportLayerDialog
 from ..tools.connection import CONNECTION
 from ..tools.project_variables import get_layer_mappings
+from .gui.adaptive_palette import apply_adaptive_palette
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -27,7 +27,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def __init__(self, parent=None):
         super(MainDockWidget, self).__init__(parent)
         self.setupUi(self)
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
+
         self.loginSettingsDialog = LoginSettingsDialog(self)
+        self.importLayerDialog = ImportLayerDialog()
+
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
 
         self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
         self.connectButton.setCheckable(True)
@@ -39,11 +46,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.layerTreeView.setDragEnabled(True)
         self.layerTreeView.setAcceptDrops(False)
-        self.layerTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.layerTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.layerTreeView.viewport().installEventFilter(self)
 
         self.proxy_model = QSortFilterProxyModel()
-        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setRecursiveFilteringEnabled(True)
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
@@ -52,11 +59,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapBrowser.textChanged.connect(self.filter_projects_view)
 
         self.projects_proxy_model = QSortFilterProxyModel()
-        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
         self.projects_proxy_model.setFilterKeyColumn(-1)
 
-        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
@@ -74,11 +81,15 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.offers_projects_setup_tableview()
 
-        self.mapCanvas = iface.mapCanvas()
-        self.mapCanvas.setAcceptDrops(True)
+        self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
+        self.addLayerButton.clicked.connect(self.importLayerDialog.show)
+        self.addLayerButton.setEnabled(False)
+
         self.mapCanvas.installEventFilter(self)
 
-        iface.addDockWidget(Qt.RightDockWidgetArea, self)
+        apply_adaptive_palette(self)
+
+        iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
         self.hide()
 
     def closeEvent(self, event):
@@ -120,6 +131,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         else:
             self.layerTreeView.setModel(None)
 
+        self.addLayerButton.setEnabled(False)
 
     def add_layers_to_treeview(self, groups: list):
         """
@@ -131,6 +143,13 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         tree_model = QStandardItemModel()
         self.proxy_model.setSourceModel(tree_model)
         root_item = tree_model.invisibleRootItem()
+
+        is_admin = CONNECTION.current_user.get('is_admin', False) if CONNECTION.current_user else False
+        self.addLayerButton.setEnabled(is_admin)
+
+        self.addLayerButton.setToolTip(
+            "" if is_admin else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
+        )
 
         def add_layers(layers: list, group_item: QStandardItem):
 
@@ -148,7 +167,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                             continue
 
                     layer_item = QStandardItem(layer_class.name)
-                    layer_item.setData(layer_class, Qt.UserRole + 1)
+                    layer_item.setData(layer_class, Qt.ItemDataRole.UserRole + 1)
                     group_item.appendRow(layer_item)
 
         def add_groups(groups: list):
@@ -169,7 +188,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
                 if scope == 'core':
                     group_item = QStandardItem(group['name'])
-                    group_item.setData([group['name'], group['id']], Qt.UserRole + 2)
+                    group_item.setData([group['name'], group['id']], Qt.ItemDataRole.UserRole + 2)
                     add_layers(group_layers, group_item)
                     root_item.appendRow(group_item)
 
@@ -177,8 +196,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         add_groups(groups)
         self.layerTreeView.setModel(self.proxy_model)
         self.layerTreeView.setHeaderHidden(True)
-        self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.message(self.tr('Pobrano schemat warstw'), duration=3)
+
+        self.refresh_layers()
 
 
     def add_layer_to_map(self, index):
@@ -189,10 +210,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         source_model = self.proxy_model.sourceModel()
         item = source_model.itemFromIndex(source_index)
 
-        if group_data := item.data(Qt.UserRole + 2):
+        if group_data := item.data(Qt.ItemDataRole.UserRole + 2):
             layers_registry.loadGroup(group_data)
 
-        elif layer_class := item.data(Qt.UserRole + 1):
+        elif layer_class := item.data(Qt.ItemDataRole.UserRole + 1):
             layer_class.loadLayer()
 
 
@@ -202,16 +223,16 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         1. dodawanie warstw/grup po przeciągnięciu na panel mapowy.
         2. dodawanie warstw/grup po dwukrotnym kliknięciu lewym przyciskiem myszy na drzewku warstw.
         """
-        if obj == getattr(self, 'mapCanvas', None):
-            if event.type() == QDragEnterEvent.DragEnter:
+        if obj == self.mapCanvas:
+            if event.type() == QDragEnterEvent.Type.DragEnter:
                 return self.handle_map_canvas_drag_enter(event)
 
-            if event.type() == QDropEvent.Drop:
+            if event.type() == QDropEvent.Type.Drop:
                 return self.handle_map_canvas_drop(event)
 
 
-        if obj == self.layerTreeView.viewport() and event.type() == QEvent.MouseButtonDblClick:
-            if event.button() == Qt.LeftButton:
+        if obj == self.layerTreeView.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
+            if event.button() == Qt.MouseButton.LeftButton:
                 index = self.layerTreeView.indexAt(event.pos())
                 if index.isValid():
                     self.add_layer_to_map(index)
@@ -269,10 +290,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             if layers_registry.isSystemLayer(layer):
                 layer_qgis_id = layer.id()
                 layer_id = mappings.get(layer_qgis_id)
+                if layer_id is None:
+                    continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                if not layer_class:
-                    return
-                layer_class.on_reload.emit(True)
+
+                if hasattr(layer_class, 'on_reload'):
+                    layer_class.on_reload.emit(True)
+                else:
+                    layer.triggerRepaint()
 
     def handle_refresh(self) -> None:
         """Odświeża zawartość aktywnej zakładki."""
@@ -333,7 +358,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             row[0].setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
 
             for item in row:
-                item.setData(p, Qt.UserRole + 1)
+                item.setData(p, Qt.ItemDataRole.UserRole + 1)
 
             model.appendRow(row)
 
@@ -344,19 +369,19 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         header = self.mapTableView.horizontalHeader()
 
         # Ustawienie domyślnego sortowania po dacie malejąco
-        header.setSortIndicator(3, Qt.DescendingOrder)
-        self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+        header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+        self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
 
         # Reset stanów sortowania
         self._sort_state = {i: 0 for i in range(4)}
 
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.mapTableView.setColumnWidth(0, 25)
         self.mapTableView.setColumnWidth(1, 220)
         self.mapTableView.setColumnWidth(2, 125)
         self.mapTableView.setColumnWidth(3, 60)
 
-        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
 
     def _handle_header_click(self, logical_index):
         header = self.mapTableView.horizontalHeader()
@@ -376,18 +401,18 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if next_state == 0:
             # Reset do stanu 0 powrót do sortowania po najnowszej dacie
-            header.setSortIndicator(3, Qt.DescendingOrder)
-            self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+            header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+            self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
             self._sort_state[3] = 2
         else:
             # Ustawienie wskazanego sortowania
-            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            order = Qt.SortOrder.AscendingOrder if next_state == 1 else Qt.SortOrder.DescendingOrder
             header.setSortIndicator(logical_index, order)
             self.projects_proxy_model.sort(logical_index, order)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu do QGIS."""
-        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.UserRole + 1)
+        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.ItemDataRole.UserRole + 1)
         if not project_info:
             return
 

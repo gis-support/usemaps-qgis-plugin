@@ -9,10 +9,12 @@
 [general]
 name=Usemaps
 qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
 version=1.0
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
+supportsQt6=True
 
 description=QGIS Plugin for connecting with Usemaps service
 about=Usemaps is a web-based GIS system that is used to store, edit, analyze, and visualize spatial data. It perfectly extends the benefits of QGIS to your organization, adding the ability to work "in the cloud".
@@ -24,6 +26,9 @@ tracker=https://github.com/gis-support/usemaps-qgis-plugin/issues
 repository=https://github.com/gis-support/usemaps-qgis-plugin
 # End of mandatory metadata
 
+changelog=Add English as default language
+    Add login with services like Active Directory, LDAP etc. on Usemap service with configured external login module
+    Loading Usemaps Maps
 
 # Tags are comma separated with spaces allowed
 tags=python

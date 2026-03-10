@@ -2,13 +2,14 @@
 import json
 import os
 
-from PyQt5.QtCore import QSettings, QUrl
-from PyQt5.QtNetwork import QNetworkRequest
+from qgis.PyQt.QtCore import QSettings, QUrl
+from qgis.PyQt.QtNetwork import QNetworkRequest
 from qgis.PyQt import uic
 from qgis.PyQt.QtWidgets import QDialog
 from qgis.core import QgsNetworkAccessManager
 from qgis.core import Qgis
 from qgis.utils import iface
+from .adaptive_palette import apply_adaptive_palette
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'two_fa.ui'))
@@ -28,6 +29,8 @@ class TwoFADialog(QDialog, FORM_CLASS):
         self.buttonBox.accepted.connect(self.dialogAccepted)
         self.buttonBox.rejected.connect(self.dialogRejected)
         self.btSendAgain.clicked.connect(self.resendCode)
+
+        apply_adaptive_palette(self)
 
     def closeEvent(self, event):
         self.edCode.clear()
@@ -58,8 +61,8 @@ class TwoFADialog(QDialog, FORM_CLASS):
 
         manager = QgsNetworkAccessManager()
         request = QNetworkRequest(QUrl(host + endpoint))
-        request.setHeader(QNetworkRequest.ContentTypeHeader, 'application/json')
-        request.setHeader(QNetworkRequest.UserAgentHeader, 'qgis')
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, 'application/json')
+        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, 'qgis')
 
         data = json.dumps(payload).encode('utf-8')
 
@@ -68,6 +71,6 @@ class TwoFADialog(QDialog, FORM_CLASS):
         iface.messageBar().pushMessage(
             self.tr('Weryfikacja dwuetapowa'),
             self.tr('Wysłano kod weryfikacyjny ponownie.'),
-            level=Qgis.Info
+            level=Qgis.MessageLevel.Info
         )
 

@@ -14,5 +14,6 @@
         <file>moja.svg</file>
         <file>predefiniowana.svg</file>
         <file>udostepniona.svg</file>
+        <file>export.svg</file>
     </qresource>
 </RCC>
