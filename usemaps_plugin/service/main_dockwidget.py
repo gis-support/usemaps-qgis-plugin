@@ -68,7 +68,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.setText("  " + self.refreshButton.text())
-        self.refreshButton.clicked.connect(self.refresh_layers)
+        self.refreshButton.clicked.connect(lambda: layers_registry.loadData(True))
         self.refreshButton.setEnabled(False)
 
         self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
@@ -263,7 +263,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         """
         if not CONNECTION.is_connected:
             return
-        layers_registry.loadData(True)
 
         res = CONNECTION.get('/api/v2/projects', sync=True)
         if isinstance(res, dict) and 'data' in res:
@@ -277,7 +276,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 if layer_id is None:
                     continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                
+
                 if hasattr(layer_class, 'on_reload'):
                     layer_class.on_reload.emit(True)
                 else:
