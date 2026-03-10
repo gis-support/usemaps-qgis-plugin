@@ -1,12 +1,17 @@
 import time
+from datetime import datetime
 
-from typing import List, Iterable, Any
+from typing import List, Iterable, Any, Dict
 from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsEditFormConfig, QgsEditorWidgetSetup,
                        QgsAttributeEditorContainer, QgsAttributeEditorField, QgsMapLayer, NULL, QgsFieldConstraints,
-                       QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest)
+                       QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
+                       QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
+                       QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsRuleBasedLabeling)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
-from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime
+from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
+from qgis.PyQt.QtGui import QColor
 
 from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
 
@@ -14,6 +19,15 @@ from ...tools.logger import Logger
 from .geojson import geojson2geom
 from ...tools.connection import CONNECTION
 from ...tools.project_variables import save_layer_mapping
+
+RASTER_ZOOM_LEVEL = {
+    0: 591657527.591555, 1: 295828763.795777, 2: 147914381.897889, 3: 73957190.948944,
+    4: 36978595.474472, 5: 18489297.737236, 6: 9244648.868618, 7: 4622324.434309,
+    8: 2311162.217155, 9: 1155581.108577, 10: 577790.554289, 11: 288895.277144,
+    12: 144447.638572, 13: 72223.819286, 14: 36111.909643, 15: 18055.954822,
+    16: 9027.977411, 17: 4513.988705, 18: 2256.994353, 19: 1128.497176,
+    20: 564.248588, 21: 282.124294, 22: 141.062147, 23: 70.5310735
+}
 
 class Datasource(QObject, Logger):
     """ Klasa bazowa dla źródeł danych systemowych """
@@ -236,13 +250,287 @@ class FeatureLayer(QObject, Logger):
         if indicators:
             iface.layerTreeView().removeIndicator(node, indicators[0])
 
-    def setStyle(self, layer):
+    def setStyle(self, layer: QgsVectorLayer) -> None:
         """ Wczytanie stylu warstwy jeśli istnieje """
-        if not self.style:
+        if self.style:
+            document = QDomDocument()
+            document.setContent(self.style)
+            layer.importNamedStyle(document)
+        else:
+            self.apply_usemaps_style(layer)
+
+    def _create_qgis_symbol(self, style_dict: dict, geom_type: int) -> QgsSymbol:
+        """ Odwzorowanie stylu 'style_web' z Usemaps na silnik QGIS """
+
+        color = QColor(next((style_dict.get(k) for k in ('fill-color', 'line-color', 'circle-color') \
+                             if style_dict.get(k)), '#3388ff'))
+
+        if geom_type == QgsWkbTypes.PolygonGeometry:
+            symbol = QgsFillSymbol.createSimple({
+                'color': color.name(),
+                'outline_color': style_dict.get('fill-outline-color', '#000000'),
+                'outline_width': str(style_dict.get('line-width', 0.2) * 0.75),
+                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+            })
+            symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+
+            symbol_layer = symbol.symbolLayer(0)
+            if symbol_layer:
+                symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+
+                outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
+                outline_color.setAlphaF(style_dict.get('fill-outline-opacity', 1.0))
+                symbol_layer.setStrokeColor(outline_color)
+
+                if style_dict.get('line-dash'):
+                    symbol_layer.setCustomDashVector(style_dict['line-dash'])
+                    symbol_layer.setUseCustomDashPattern(True)
+
+        elif geom_type == QgsWkbTypes.LineGeometry:
+            symbol = QgsLineSymbol.createSimple({
+                'line_color': color.name(),
+                'line_width': str(style_dict.get('line-width', 1.0) * 0.75),
+                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+            })
+            if style_dict.get('line-dash'):
+                symbol.symbolLayer(0).setCustomDashVector(style_dict['line-dash'])
+                symbol.symbolLayer(0).setUseCustomDashPattern(True)
+
+            symbol.setWidthUnit(QgsUnitTypes.RenderPoints)
+
+            opacity = style_dict.get('line-opacity')
+            if opacity is None:
+                opacity = style_dict.get('opacity')
+            if opacity is None:
+                opacity = style_dict.get('fill-opacity')
+
+            symbol.setOpacity(float(opacity) if opacity is not None else 1.0)
+
+        elif geom_type == QgsWkbTypes.PointGeometry:
+            symbol = QgsMarkerSymbol.createSimple({
+                'color': color.name(),
+                'size': str(style_dict.get('circle-radius', 3.0) * 1.5),
+                'outline_style': 'no'
+            })
+            symbol.setSizeUnit(QgsUnitTypes.RenderPoints)
+            symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+        else:
+            return QgsSymbol.defaultSymbol(geom_type)
+
+        return symbol
+
+    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+        """ Aplikuje styl i poprawnie ustawia poziomy skalowe """
+        data = self.metadata.get('data', {})
+        style_web = data.get('style_web', {})
+        if not style_web:
             return
-        document = QDomDocument()
-        document.setContent(self.style)
-        layer.importNamedStyle(document)
+
+        # Poziomy skalowe
+        if any(style_web.get(k) is not None for k in ('minzoom', 'maxzoom')):
+            layer.setScaleBasedVisibility(True)
+            layer.setMinimumScale(RASTER_ZOOM_LEVEL.get(style_web.get('minzoom'), 0))
+            layer.setMaximumScale(RASTER_ZOOM_LEVEL.get(style_web.get('maxzoom'), 0))
+
+        geom_type = layer.geometryType()
+
+        # Symbol domyślny
+        default_symbol = self._create_qgis_symbol(style_web, geom_type)
+
+        ranges_config = style_web.get('ranges', {})
+        uniques_config = style_web.get('uniques', {})
+
+        # Obsługa stopniowej
+        if ranges_config.get('values'):
+            root_rule = QgsRuleBasedRenderer.Rule(None)
+            prop = ranges_config.get('property')
+
+            # Ustalanie prawdziwej nazwy pola
+            field_name = prop
+            if prop.startswith('mvt_int_') and layer.fields().indexFromName(prop) == -1:
+                clean_prop = prop.replace('mvt_int_', '')
+                if layer.fields().indexFromName(clean_prop) != -1:
+                    field_name = clean_prop
+
+            # Sprawdzenie typu pola w QGIS
+            field_idx = layer.fields().indexFromName(field_name)
+            field_type = None
+            if field_idx != -1:
+                field_type = layer.fields().field(field_idx).type()
+
+            for r in ranges_config['values']:
+                symbol = self._create_qgis_symbol(r, geom_type)
+                label = r.get('label', '')
+                min_val_raw = r["min-value"]
+                max_val_raw = r["max-value"]
+
+                expression = ""
+
+                # Pole typu TIME
+                if field_type == QVariant.Time:
+                    t_min = datetime.fromtimestamp(min_val_raw)
+                    t_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"make_time({t_min.hour}, {t_min.minute}, {t_min.second})"
+                    max_str = f"make_time({t_max.hour}, {t_max.minute}, {t_max.second})"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Pole typu DATE
+                elif field_type == QVariant.Date:
+                    d_min = datetime.fromtimestamp(min_val_raw)
+                    d_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"to_date('{d_min.strftime('%Y-%m-%d')}')"
+                    max_str = f"to_date('{d_max.strftime('%Y-%m-%d')}')"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Pole typu DATETIME
+                elif field_type == QVariant.DateTime:
+                    dt_min = datetime.fromtimestamp(min_val_raw)
+                    dt_max = datetime.fromtimestamp(max_val_raw)
+                    min_str = f"to_datetime('{dt_min.strftime('%Y-%m-%d %H:%M:%S')}')"
+                    max_str = f"to_datetime('{dt_max.strftime('%Y-%m-%d %H:%M:%S')}')"
+                    expression = f'"{field_name}" >= {min_str} AND "{field_name}" <= {max_str}'
+
+                # Zwykłe liczby (Int/Double)
+                else:
+                    expression = f'"{field_name}" >= {min_val_raw} AND "{field_name}" <= {max_val_raw}'
+
+                rule = QgsRuleBasedRenderer.Rule(symbol)
+                rule.setFilterExpression(expression)
+                rule.setLabel(str(label))
+                root_rule.appendChild(rule)
+
+            # Pozostałe które nie weszły do reguły
+            else_rule = QgsRuleBasedRenderer.Rule(default_symbol.clone())
+            else_rule.setIsElse(True)
+            else_rule.setLabel(self.tr("Pozostałe"))
+            root_rule.appendChild(else_rule)
+
+            layer.setRenderer(QgsRuleBasedRenderer(root_rule))
+
+        # Obsługa unikalnej
+        elif uniques_config.get('values'):
+            prop = uniques_config.get('property')
+            categories_list = []
+
+            # Typ pola
+            field_idx = layer.fields().indexFromName(prop)
+            field_type = None
+            if field_idx != -1:
+                field_type = layer.fields().field(field_idx).type()
+
+            for k, v in uniques_config['values'].items():
+                symbol = self._create_qgis_symbol(v, geom_type)
+                val = v.get('value', k)
+                label = str(v.get('label', str(val)))
+
+                converted_val = val
+
+                # Konwersja String -> Typ QGIS dla unikalnych wartości
+                if isinstance(val, str):
+                    # Czas
+                    if field_type == QVariant.Time:
+                        t = QTime.fromString(val, "HH:mm:ss")
+                        if not t.isValid():
+                            t = QTime.fromString(val, "HH:mm")
+                        if t.isValid():
+                            converted_val = t
+
+                    # Data
+                    elif field_type == QVariant.Date:
+                        d = QDate.fromString(val, "yyyy-MM-dd")
+                        if not d.isValid():
+                            d = QDate.fromString(val, "dd-MM-yyyy")
+                        if d.isValid():
+                            converted_val = d
+
+                    # Data i Czas
+                    elif field_type == QVariant.DateTime:
+                        dt = QDateTime.fromString(val, "dd-MM-yyyy HH:mm")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "yyyy-MM-dd HH:mm:ss")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "yyyy-MM-dd HH:mm")
+                        if not dt.isValid():
+                            dt = QDateTime.fromString(val, "dd-MM-yyyy HH:mm:ss")
+                        if dt.isValid():
+                            converted_val = dt
+
+                categories_list.append(QgsRendererCategory(converted_val, symbol, label))
+
+            categories_list.append(QgsRendererCategory(None, default_symbol.clone(), self.tr("Pozostałe")))
+
+            if categories_list:
+                renderer = QgsCategorizedSymbolRenderer(prop, categories_list)
+                renderer.setSourceSymbol(default_symbol.clone())
+                layer.setRenderer(renderer)
+            else:
+                layer.setRenderer(QgsSingleSymbolRenderer(default_symbol))
+
+        else:
+            # Jeśli brak klasyfikacji, używamy standardowego Single Symbol
+            layer.setRenderer(QgsSingleSymbolRenderer(default_symbol))
+
+        # Etykiety
+        if style_web.get('labels'):
+            self.apply_usemaps_labels(layer, style_web['labels'], data)
+
+        layer.triggerRepaint()
+
+    def _create_label_settings(self, labels_cfg: dict, geom_type: int) -> QgsPalLayerSettings:
+        """ Konfiguracja etykiet """
+        settings = QgsPalLayerSettings()
+
+        fields_list = [f'"{atr}"' for atr in labels_cfg.get('attributes', []) if atr]
+
+        # Gdy atrybutów w etykiecie web jest więcej niż 1
+        if len(fields_list) > 1:
+            settings.isExpression = True
+            settings.fieldName = "concat(" + ", ' ', ".join(fields_list) + ")"
+        else:
+            settings.fieldName = next((atr for atr in labels_cfg.get('attributes', []) if atr), '')
+
+        text_format = QgsTextFormat()
+        text_format.setSize(labels_cfg.get('font-size', 12) * 0.85)
+        text_format.setSizeUnit(QgsUnitTypes.RenderPoints)
+        text_format.setColor(QColor(labels_cfg.get('font-color', '#000000')))
+
+        if labels_cfg.get('font-weight') == 'bold':
+            font = text_format.font()
+            font.setBold(True)
+            text_format.setFont(font)
+
+        if labels_cfg.get('stroke-visible', False):
+            buffer = text_format.buffer()
+            buffer.setEnabled(True)
+            buffer.setColor(QColor(labels_cfg.get('stroke-color', '#FFFFFF')))
+            buffer.setSize(labels_cfg.get('stroke-width', 1.0) * 0.75)
+            buffer.setSizeUnit(QgsUnitTypes.RenderPoints)
+            text_format.setBuffer(buffer)
+
+        settings.setFormat(text_format)
+
+        # Offsety
+        settings.xOffset = labels_cfg.get('offset-x', 0) * 0.75
+        settings.yOffset = labels_cfg.get('offset-y', 0) * 0.75
+
+        # Pozycjonowanie zależne od geometrii
+        if geom_type == QgsWkbTypes.PolygonGeometry:
+            settings.placement = QgsPalLayerSettings.AroundPoint
+        elif geom_type == QgsWkbTypes.LineGeometry:
+            settings.placement = QgsPalLayerSettings.Line
+            settings.placementFlags = QgsPalLayerSettings.OnLine | QgsPalLayerSettings.MapOrientation
+
+        return settings
+
+    def apply_usemaps_labels(self, layer: QgsVectorLayer, labels_cfg: dict, data: dict) -> None:
+        """ Aplikuje etykietowanie """
+        if labels_cfg and any(labels_cfg.get('attributes', [])):
+            layer.setLabeling(QgsVectorLayerSimpleLabeling(
+                self._create_label_settings(labels_cfg, layer.geometryType())
+            ))
+            layer.setLabelsEnabled(True)
+        else:
+            layer.setLabelsEnabled(False)
 
     def getFeatures(self):
         """ Wysłanie żądania o obiekty warstwy """
@@ -265,7 +553,7 @@ class FeatureLayer(QObject, Logger):
         self.message(
             self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(
                 layer_name, time.time() - self.time),
-            level=Qgis.Success, duration=5)
+            level=Qgis.MessageLevel.Success, duration=5)
 
     def onReload(self):
         if not self.layers:
@@ -344,74 +632,49 @@ class FeatureLayer(QObject, Logger):
         layer.setFieldAlias(id_field, self.tr('Identyfikator'))
         config.setReadOnly(id_field, True)
 
-        if form_schema:
-            elements = form_schema.get('elements')
-
-            if elements is None:
-                return
-
-            field_id_map = {field.name(): field_id for field_id,
-                            field in enumerate(layer.fields())}
-
+        if form_schema and form_schema.get('elements'):
             config.clearTabs()
-            config.setLayout(QgsEditFormConfig.TabLayout)
+            config.setLayout(QgsEditFormConfig.EditorLayout.TabLayout)
 
-            for element in elements:
-                tab = QgsAttributeEditorContainer(element['label'], None)
-                tab.setIsGroupBox(False)
+            for element in form_schema['elements']:
+                tab = QgsAttributeEditorContainer(element.get('label', ''), None)
+                tab.setType(Qgis.AttributeEditorContainerType.Tab)
 
-                for idx, inner_element in enumerate(element['elements']):
-
+                for idx, inner_element in enumerate(element.get('elements', [])):
                     attr = inner_element['attribute']
-                    label = inner_element.get('label', '')
+                    field_id = layer.fields().indexFromName(attr)
 
-                    field_id = field_id_map.get(attr)
-                    if field_id:
-                        layer.setFieldAlias(field_id, label)
-
-                        if inner_element.get('required', False) == True and not field_id == id_field:
+                    if field_id != -1:
+                        layer.setFieldAlias(field_id, inner_element.get('label', ''))
+                        if inner_element.get('required') and field_id != id_field:
                             layer.setFieldConstraint(
                                 field_id,
-                                QgsFieldConstraints.ConstraintNotNull,
-                                QgsFieldConstraints.ConstraintStrengthHard,
+                                QgsFieldConstraints.Constraint.ConstraintNotNull,
+                                QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard
                             )
 
-                    default_value_policy = inner_element.get(
-                        'default_value_policy')
-                    if default_value_policy:
-                        self.default_values[attr] = default_value_policy['value']
+                    policy = inner_element.get('default_value_policy')
+                    if isinstance(policy, dict):
+                        self.default_values[attr] = policy.get('value')
 
-                    tab.addChildElement(
-                        QgsAttributeEditorField(attr, idx, tab))
+                    tab.addChildElement(QgsAttributeEditorField(attr, idx, tab))
                 config.addTab(tab)
 
-        attributes = self.datasource.attributes_schema['attributes']
-
-        for attribute in attributes:
+        for attribute in self.datasource.attributes_schema.get('attributes', []):
             field_id = layer.fields().indexFromName(attribute['name'])
             config.setReadOnly(field_id, attribute.get('read_only'))
-            attribute_type = attribute.get('type')
 
-            if attribute_type == 'dict':
-                allowed_values = attribute.get('allowed_values')
-                if allowed_values:
-                    dict_values = {value: value for value in allowed_values}
-                    self.setWidgetType(layer, dict_values, field_id)
-            elif attribute_type == 'relation':
-                if 'parent' in attribute['name']:
-                    continue
-                relation = attribute.get('relation')
-                related_datasource = relation.get('data_source')
-                related_attribute = relation.get('attribute')
-                representation = relation.get('representation')
-                if related_datasource and representation:
-                    relation_map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
-                        related_datasource, {}).get(related_attribute, {}).get(representation)
-                    if relation_map_values:
-                        dict_values = {data['text']: data['value']
-                                       for data in relation_map_values}
-                        if dict_values:
-                            self.setWidgetType(layer, dict_values, field_id)
+            if attribute.get('type') == 'dict' and attribute.get('allowed_values'):
+                self.setWidgetType(layer, {v: v for v in attribute['allowed_values']}, field_id)
+
+            elif attribute.get('type') == 'relation' and 'parent' not in attribute['name']:
+                relation = attribute.get('relation', {})
+                map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
+                    relation.get('data_source'), {}
+                ).get(relation.get('attribute'), {}).get(relation.get('representation'))
+
+                if map_values:
+                    self.setWidgetType(layer, {d['text']: d['value'] for d in map_values}, field_id)
 
         layer.setEditFormConfig(config)
 
@@ -455,11 +718,11 @@ class FeatureLayer(QObject, Logger):
 
     def afterModify(self, data: dict):
         if data.get("error"):
-            self.message(data.get("error_message"), level=Qgis.Critical)
+            self.message(data.get("error_message"), level=Qgis.MessageLevel.Critical)
             return
 
         self.message(self.tr('Pomyślnie zmodyfikowano dane warstwy: {}').format(self.layers[0].name()),
-                        level=Qgis.Success, duration=5)
+                        level=Qgis.MessageLevel.Success, duration=5)
         self.on_reload.emit(True)
 
     def addFeatures(self, edit_buffer):
