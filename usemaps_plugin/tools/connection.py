@@ -2,8 +2,8 @@
 import urllib
 import uuid
 
-from PyQt5.QtCore import QObject, QUrl, pyqtSignal, QSettings, QCoreApplication
-from PyQt5.QtNetwork import QNetworkRequest
+from qgis.PyQt.QtCore import QObject, QUrl, pyqtSignal, QSettings, QCoreApplication
+from qgis.PyQt.QtNetwork import QNetworkRequest
 from qgis.core import QgsNetworkAccessManager, Qgis
 import json
 
@@ -39,11 +39,10 @@ class Connection(QObject, Logger):
         try:
             response_data = json.loads(bytearray(reply.readAll()))
         except Exception as e:
-            msg = QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e)
-            cls.message(msg, level=Qgis.Critical, duration=5)
+            cls.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
             return
 
-        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
         if status_code not in (200, 201, 204):
             if status_code == 500:
@@ -51,7 +50,7 @@ class Connection(QObject, Logger):
             else:
                 error_message = response_data['error_message']
 
-            cls.message(f'{error_message}', level=Qgis.Critical, duration=5)
+            cls.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
             return
 
         callback(response_data)
@@ -104,16 +103,16 @@ class Connection(QObject, Logger):
         request = self._createRequest(endpoint, with_token=False)
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
-        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         if not response_raw:
             self.message(
                 self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
-                level=Qgis.Critical, duration=5)
+                level=Qgis.MessageLevel.Critical, duration=5)
             return False
         response = json.loads(response_raw)
         if status_code != 200 and status_code != 201:
             error_message = response.get('error_message')
-            self.message(f'{error_message}', level=Qgis.Critical, duration=5)
+            self.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
             return False
 
         if status_code == 201:
@@ -173,11 +172,12 @@ class Connection(QObject, Logger):
         self.current_user = None
         return True
 
-    def _createRequest(self, endpoint: str, content_type: str = 'application/json',
+    def _createRequest(self, 
+                       endpoint: str, 
+                       content_type: str = 'application/json', 
                        with_token: bool = True) -> QNetworkRequest:
-        host = self._getHost()
-        request = QNetworkRequest(QUrl(host + endpoint))
-        request.setHeader(QNetworkRequest.ContentTypeHeader, content_type)
+        request = QNetworkRequest(QUrl(urllib.parse.urljoin(self._getHost(), endpoint)))
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, content_type)
         request.setRawHeader(b'X-User-Agent', b'qgis_gs')
         if with_token and self.token:
             request.setRawHeader(b'X-Access-Token', bytes(self.token.encode()))
@@ -241,16 +241,16 @@ class Connection(QObject, Logger):
         request = self._createRequest('/api/login', with_token=False)
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
-        status_code = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         if not response_raw:
             self.message(
                 self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
-                level=Qgis.Critical, duration=5)
+                level=Qgis.MessageLevel.Critical, duration=5)
             return False
         response = json.loads(response_raw)
         if status_code != 200:
             error_message = response.get('error_message')
-            self.message(f'{error_message}', level=Qgis.Critical, duration=5)
+            self.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
             return False
         else:
             self.token = response['token']
