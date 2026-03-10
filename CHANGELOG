@@ -1,2 +1,7 @@
+1.1
+Add English as default language
+Add login with services like Active Directory, LDAP etc. on Usemap service with configured external login module
+Loading Usemaps Maps
+
 1.0
 The initial version of the plugin enabling connection to the Usemaps service
