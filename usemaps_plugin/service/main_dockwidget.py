@@ -1,12 +1,10 @@
 import os
 
-from PyQt5 import QtWidgets, uic
-from PyQt5.QtCore import pyqtSignal, QEvent
-from PyQt5.QtGui import QIcon, QDropEvent, QDragEnterEvent
+from qgis.PyQt import QtWidgets, uic
+from qgis.PyQt.QtCore import pyqtSignal, QEvent, Qt, QSortFilterProxyModel
+from qgis.PyQt.QtGui import QIcon, QDropEvent, QDragEnterEvent, QStandardItemModel, QStandardItem
 
-from PyQt5.Qt import QStandardItemModel, QStandardItem, QSortFilterProxyModel
 from qgis.utils import iface
-from qgis.PyQt.QtCore import Qt
 from qgis.core import QgsProject, Qgis
 
 from .layers.layers_registry import layers_registry
@@ -35,6 +33,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.loginSettingsDialog = LoginSettingsDialog(self)
         self.importLayerDialog = ImportLayerDialog()
 
+        self.mapCanvas = iface.mapCanvas()
+        self.mapCanvas.setAcceptDrops(True)
+
         self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
         self.connectButton.setCheckable(True)
 
@@ -45,11 +46,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.layerTreeView.setDragEnabled(True)
         self.layerTreeView.setAcceptDrops(False)
-        self.layerTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.layerTreeView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.layerTreeView.viewport().installEventFilter(self)
 
         self.proxy_model = QSortFilterProxyModel()
-        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setRecursiveFilteringEnabled(True)
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
@@ -57,11 +58,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapBrowser.textChanged.connect(self.filter_projects_view)
 
         self.projects_proxy_model = QSortFilterProxyModel()
-        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.projects_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.projects_proxy_model.setRecursiveFilteringEnabled(True)
         self.projects_proxy_model.setFilterKeyColumn(-1)
 
-        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.mapTableView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
@@ -78,7 +79,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         apply_adaptive_palette(self)
 
-        iface.addDockWidget(Qt.RightDockWidgetArea, self)
+        iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
         self.hide()
 
     def closeEvent(self, event):
@@ -156,7 +157,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                             continue
 
                     layer_item = QStandardItem(layer_class.name)
-                    layer_item.setData(layer_class, Qt.UserRole + 1)
+                    layer_item.setData(layer_class, Qt.ItemDataRole.UserRole + 1)
                     group_item.appendRow(layer_item)
 
         def add_groups(groups: list):
@@ -177,7 +178,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
                 if scope == 'core':
                     group_item = QStandardItem(group['name'])
-                    group_item.setData([group['name'], group['id']], Qt.UserRole + 2)
+                    group_item.setData([group['name'], group['id']], Qt.ItemDataRole.UserRole + 2)
                     add_layers(group_layers, group_item)
                     root_item.appendRow(group_item)
 
@@ -185,8 +186,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         add_groups(groups)
         self.layerTreeView.setModel(self.proxy_model)
         self.layerTreeView.setHeaderHidden(True)
-        self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.message(self.tr('Pobrano schemat warstw'), duration=3)
+
+        self.refresh_layers()
 
 
     def add_layer_to_map(self, index):
@@ -197,10 +200,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         source_model = self.proxy_model.sourceModel()
         item = source_model.itemFromIndex(source_index)
 
-        if group_data := item.data(Qt.UserRole + 2):
+        if group_data := item.data(Qt.ItemDataRole.UserRole + 2):
             layers_registry.loadGroup(group_data)
 
-        elif layer_class := item.data(Qt.UserRole + 1):
+        elif layer_class := item.data(Qt.ItemDataRole.UserRole + 1):
             layer_class.loadLayer()
 
 
@@ -211,15 +214,15 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         2. dodawanie warstw/grup po dwukrotnym kliknięciu lewym przyciskiem myszy na drzewku warstw.
         """
         if obj == self.mapCanvas:
-            if event.type() == QDragEnterEvent.DragEnter:
+            if event.type() == QDragEnterEvent.Type.DragEnter:
                 return self.handle_map_canvas_drag_enter(event)
 
-            if event.type() == QDropEvent.Drop:
+            if event.type() == QDropEvent.Type.Drop:
                 return self.handle_map_canvas_drop(event)
 
 
-        if obj == self.layerTreeView.viewport() and event.type() == QEvent.MouseButtonDblClick:
-            if event.button() == Qt.LeftButton:
+        if obj == self.layerTreeView.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
+            if event.button() == Qt.MouseButton.LeftButton:
                 index = self.layerTreeView.indexAt(event.pos())
                 if index.isValid():
                     self.add_layer_to_map(index)
@@ -271,10 +274,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             if layers_registry.isSystemLayer(layer):
                 layer_qgis_id = layer.id()
                 layer_id = mappings.get(layer_qgis_id)
+                if layer_id is None:
+                    continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                if not layer_class:
-                    return
-                layer_class.on_reload.emit(True)
+                
+                if hasattr(layer_class, 'on_reload'):
+                    layer_class.on_reload.emit(True)
+                else:
+                    layer.triggerRepaint()
 
     def filter_projects_view(self, text):
         self.projects_proxy_model.setFilterFixedString(text)
@@ -282,17 +289,22 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def load_projects_to_tableview(self, projects_data: list):
         """Wypełnia zakładkę Mapy danymi z endpointu /projects."""
         model = QStandardItemModel(0, 4)
-        model.setHorizontalHeaderLabels(['', 'Nazwa', 'Właściciel', 'Data ostatniej edycji'])
+        model.setHorizontalHeaderLabels([
+            '',
+            self.tr('Nazwa'),
+            self.tr('Właściciel'),
+            self.tr('Data ostatniej edycji')
+            ])
         self.projects_proxy_model.setSourceModel(model)
 
         # Pobranie danych aktualnego uzytkownika
         current_data = (CONNECTION.get('/api/users/current_user', sync=True) or {}).get('data', {})
         c_id = current_data.get('id')
-        c_name = current_data.get('name', 'Brak informacji')
+        c_name = current_data.get('name', '')
 
         # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
         users = {
-            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', 'Brak informacji'))
+            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
             for uid in {p.get('owner') for p in projects_data if p.get('owner')}
         }
 
@@ -312,14 +324,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             row = [
                 QStandardItem(label),
                 QStandardItem(p.get('name', '')),
-                QStandardItem(users.get(owner, 'Brak informacji')),
+                QStandardItem(users.get(owner, '')),
                 QStandardItem(p.get('last_saved_at', '').replace('T', ' ')[:16])
             ]
 
             row[0].setIcon(QIcon(f":/plugins/usemaps-plugin/{icon_file}"))
 
             for item in row:
-                item.setData(p, Qt.UserRole + 1)
+                item.setData(p, Qt.ItemDataRole.UserRole + 1)
 
             model.appendRow(row)
 
@@ -330,19 +342,19 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         header = self.mapTableView.horizontalHeader()
 
         # Ustawienie domyślnego sortowania po dacie malejąco
-        header.setSortIndicator(3, Qt.DescendingOrder)
-        self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+        header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+        self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
 
         # Reset stanów sortowania
         self._sort_state = {i: 0 for i in range(4)}
 
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.mapTableView.setColumnWidth(0, 25)
         self.mapTableView.setColumnWidth(1, 220)
         self.mapTableView.setColumnWidth(2, 125)
         self.mapTableView.setColumnWidth(3, 60)
 
-        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.mapTableView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
 
     def _handle_header_click(self, logical_index):
         header = self.mapTableView.horizontalHeader()
@@ -362,31 +374,31 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if next_state == 0:
             # Reset do stanu 0 powrót do sortowania po najnowszej dacie
-            header.setSortIndicator(3, Qt.DescendingOrder)
-            self.projects_proxy_model.sort(3, Qt.DescendingOrder)
+            header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
+            self.projects_proxy_model.sort(3, Qt.SortOrder.DescendingOrder)
             self._sort_state[3] = 2
         else:
             # Ustawienie wskazanego sortowania
-            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            order = Qt.SortOrder.AscendingOrder if next_state == 1 else Qt.SortOrder.DescendingOrder
             header.setSortIndicator(logical_index, order)
             self.projects_proxy_model.sort(logical_index, order)
 
     def add_project_to_qgis(self, index):
         """Dodaje strukturę projektu do QGIS."""
-        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.UserRole + 1)
+        project_info = self.projects_proxy_model.mapToSource(index).data(Qt.ItemDataRole.UserRole + 1)
         if not project_info:
             return
 
         res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
         if not res or 'data' not in res:
-            self.message(self.tr("Błąd pobierania danych projektu"), level=Qgis.Warning)
+            self.message(self.tr("Błąd pobierania danych mapy"), level=Qgis.Warning)
             return
 
         data = res['data']
         layers_list = data.get('layers', [])
 
         if not layers_list:
-            self.message(self.tr("Projekt nie zawiera żadnych warstw."), level=Qgis.Info)
+            self.message(self.tr("Mapa nie zawiera żadnych warstw."), level=Qgis.Info)
             return
 
         # Tworzenie głównej grupy projektu w QGIS
@@ -418,4 +430,4 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
 
         process_items(res['data'].get('layers', []), root_group)
-        self.message(self.tr(f"Zaimportowano projekt: {project_info['name']}"), duration=3)
+        self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)

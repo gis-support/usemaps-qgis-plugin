@@ -1,8 +1,8 @@
 import os.path
 
-from PyQt5.QtCore import (QCoreApplication, QUrl, QSettings, QTranslator)
-from PyQt5.QtGui import QDesktopServices, QIcon
-from PyQt5.QtWidgets import QAction, QDockWidget
+from qgis.PyQt.QtCore import QCoreApplication, QUrl, QSettings, QTranslator
+from qgis.PyQt.QtGui import QDesktopServices, QIcon
+from qgis.PyQt.QtWidgets import QAction, QDockWidget
 
 from .resources import resources
 from .tools.connection import CONNECTION
