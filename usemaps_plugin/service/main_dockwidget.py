@@ -54,6 +54,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.proxy_model.setRecursiveFilteringEnabled(True)
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
+        layers_registry.on_schema.connect(self.offers_projects_check_module)
 
         self.mapBrowser.textChanged.connect(self.filter_projects_view)
 
@@ -67,9 +68,18 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self._sort_state = {}
 
         self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
-        self.refreshButton.setText("  " + self.refreshButton.text())
-        self.refreshButton.clicked.connect(lambda: layers_registry.loadData(True))
+        self.refreshButton.clicked.connect(self.handle_refresh)
         self.refreshButton.setEnabled(False)
+        self.tabWidget.setCurrentIndex(0)
+
+        self._offers_projects_sort_state = {}
+        self._PROJECTS_TAB_INDEX = 2
+        self.project_settings = None
+        self.project_datasource_name = None
+        self.project_id_field = None
+        self.project_name_field = None
+
+        self.offers_projects_setup_tableview()
 
         self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
         self.addLayerButton.clicked.connect(self.importLayerDialog.show)
@@ -228,6 +238,13 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                     self.add_layer_to_map(index)
                     return True
 
+        if obj == self.tableProjects.viewport() and event.type() == QEvent.MouseButtonDblClick:
+            if event.button() == Qt.LeftButton:
+                index = self.tableProjects.indexAt(event.pos())
+                if index.isValid():
+                    self.offers_projects_load_layers(index)
+                    return True
+
         return super().eventFilter(obj, event)
 
 
@@ -281,6 +298,17 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                     layer_class.on_reload.emit(True)
                 else:
                     layer.triggerRepaint()
+
+    def handle_refresh(self) -> None:
+        """Odświeża zawartość aktywnej zakładki."""
+        current = self.tabWidget.currentIndex()
+        if current == self._PROJECTS_TAB_INDEX:
+            if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
+                self.offers_projects_fetch_config()
+        else:
+            self.refresh_layers()
+
+    # Mapy
 
     def filter_projects_view(self, text):
         self.projects_proxy_model.setFilterFixedString(text)
@@ -430,3 +458,209 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         process_items(res['data'].get('layers', []), root_group)
         self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)
+
+    # Projekty
+
+    def offers_projects_setup_tableview(self) -> None:
+        """Konfiguruje wygląd i zachowanie zakładki projektów."""
+        self.offers_projects_source_model = QStandardItemModel(0, 4, self)
+        self.offers_projects_proxy_model = QSortFilterProxyModel(self)
+        self.offers_projects_proxy_model.setSourceModel(self.offers_projects_source_model)
+        self.offers_projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.offers_projects_proxy_model.setFilterKeyColumn(-1)
+
+        self.tableProjects.setModel(self.offers_projects_proxy_model)
+        self.tableProjects.setSortingEnabled(True)
+        self.tableProjects.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.tableProjects.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.tableProjects.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.tableProjects.horizontalHeader().setStretchLastSection(True)
+        header = self.tableProjects.horizontalHeader()
+        header.setVisible(False)
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+
+        header.sectionClicked.connect(self.offers_projects_handle_header_click)
+        self.tableProjects.viewport().installEventFilter(self)
+        self.projectBrowser.textChanged.connect(self.offers_projects_proxy_model.setFilterFixedString)
+
+        self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
+
+    def offers_projects_check_module(self) -> None:
+        if not CONNECTION.is_connected:
+            return
+        CONNECTION.get(
+            '/api/license_manager/modules/OZE_MODULE',
+            callback=self.offers_projects_on_module_check
+        )
+
+    def offers_projects_on_module_check(self, response: dict) -> None:
+        data = (response or {}).get('data', {})
+        if data.get('enabled') and data.get('configured'):
+            self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, True)
+            self.offers_projects_fetch_config()
+        else:
+            self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
+
+    def offers_projects_fetch_config(self) -> None:
+        """Pobiera konfigurację źródła projektów."""
+        if not CONNECTION.is_connected:
+            return
+        CONNECTION.get(
+            '/api/dataio/selected_datasources/oze_projects_datasource',
+            callback=self.offers_projects_process_config
+        )
+
+    def offers_projects_process_config(self, response: dict) -> None:
+        if response and 'data' in response:
+            self.project_settings = response['data'].get('settings', {})
+            self.project_datasource_name = response['data'].get('datasource')
+
+            if not self.project_datasource_name:
+                self.message(self.tr("Brak skonfigurowanego źródła projektów."), level=1)
+                return
+
+            ds_meta = CONNECTION.get(f'/api/v2/datasources/{self.project_datasource_name}', sync=True) or {}
+            ds_data = ds_meta.get('data', {})
+            self.project_id_field = ds_data.get('pk_attribute', 'id')
+            self.project_name_field = ds_data.get('label_attribute') or self.project_settings.get('name_attribute', 'nazwa')
+
+            CONNECTION.post(
+                f'/api/v2/datasources-features/read/{self.project_datasource_name}',
+                payload={"data": {}},
+                callback=self.offers_projects_populate_table
+            )
+
+    def offers_projects_populate_table(self, response: dict) -> None:
+        """Wypełnia tabelę projektów danymi i ustawia domyślne sortowanie po ID rosnąco."""
+        self.offers_projects_source_model.removeRows(0, self.offers_projects_source_model.rowCount())
+        if not (response and 'data' in response):
+            return
+
+        self.offers_projects_source_model.setHorizontalHeaderLabels([
+                        "ID",
+                        self.tr("Nazwa"),
+                        self.tr("Status"),
+                        self.tr("Kierownik")
+                        ])
+        header = self.tableProjects.horizontalHeader()
+        header.setVisible(True)
+
+        for feature in response['data'].get('features', []):
+            p = feature.get('properties', {})
+            m_id = p.get(self.project_settings.get('manager_attribute', 'kierownik'))
+
+            id_item = QStandardItem()
+            id_item.setData(int(feature.get(self.project_id_field, 0)), Qt.DisplayRole)
+
+            if m_id:
+                user_data = (CONNECTION.get(f'/api/users/{m_id}', sync=True) or {}).get('data', {})
+                manager_name = user_data.get('name') or user_data.get('username') or str(m_id)
+            else:
+                manager_name = ""
+            manager_item = QStandardItem(manager_name)
+
+            self.offers_projects_source_model.appendRow([
+                id_item,
+                QStandardItem(str(p.get(self.project_name_field, '') or "")),
+                QStandardItem(str(p.get(self.project_settings.get('status_attribute', 'status'), '') or self.tr("Brak danych"))),
+                manager_item
+            ])
+
+        # Domyślne sortowanie po ID rosnąco
+        header.setSortIndicator(0, Qt.AscendingOrder)
+        self.offers_projects_proxy_model.sort(0, Qt.AscendingOrder)
+        self._offers_projects_sort_state = {i: 0 for i in range(4)}
+        self._offers_projects_sort_state[0] = 1
+
+    def offers_projects_handle_header_click(self, logical_index: int)-> None:
+        """Obsługuje kliknięcie nagłówka tabeli projektów (3 stany sortowania)"""
+        header = self.tableProjects.horizontalHeader()
+
+        # Kolumna ID tylko 2 stany (rosnąco <-> malejąco), bez resetu
+        if logical_index == 0:
+            next_state = 2 if self._offers_projects_sort_state.get(0, 0) == 1 else 1
+        else:
+            next_state = (self._offers_projects_sort_state.get(logical_index, 0) + 1) % 3
+
+        # Reset stanów pozostałych kolumn
+        self._offers_projects_sort_state = {i: 0 for i in range(4)}
+        self._offers_projects_sort_state[logical_index] = next_state
+
+        if next_state == 0:
+            # Powrót do domyślnego sortowania po ID rosnąco
+            header.setSortIndicator(0, Qt.AscendingOrder)
+            self.offers_projects_proxy_model.sort(0, Qt.AscendingOrder)
+            self._offers_projects_sort_state[0] = 1
+        else:
+            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            header.setSortIndicator(logical_index, order)
+            self.offers_projects_proxy_model.sort(logical_index, order)
+
+    def offers_projects_load_layers(self, index) -> None:
+        """Pobiera relacje warstw dla wybranego projektu"""
+        if not (index.isValid() and self.project_datasource_name):
+            return
+
+        project_id = self.offers_projects_proxy_model.data(self.offers_projects_proxy_model.index(index.row(), 0))
+        project_name = self.offers_projects_proxy_model.data(self.offers_projects_proxy_model.index(index.row(), 1))
+
+        CONNECTION.post(
+            f"/api/dataio/data_sources/feature_assignment/{self.project_datasource_name}/{project_id}",
+            payload={"data": {}},
+            callback=lambda res: self.offers_projects_apply_layers(res, project_name)
+        )
+
+    def offers_projects_apply_layers(self, response: dict, project_name: str) -> None:
+        """Tworzy grupę i ładuje do niej warstwy powiązane z projektem."""
+        if not (response and 'data' in response):
+            return
+
+        assigned_sources = {
+            item.get('data_source_name') for item in response['data']
+            if item.get('data_source_name') and item.get('data_source_name') != 'attachments_attachment'
+        }
+
+        candidate_layers = [
+            layer_class
+            for layer_class in layers_registry.layers.values()
+            if getattr(layer_class, 'datasource_name', None) in assigned_sources
+        ]
+
+        if not assigned_sources:
+            self.message(self.tr("Projekt {} nie posiada powiązanych źródeł danych").format(project_name), level=1, duration=3)
+            return
+
+        if not candidate_layers:
+            self.message(self.tr("Projekt {} nie posiada warstw dostępnych dla Ciebie").format(project_name), level=1, duration=3)
+            return
+
+        project_group = QgsProject.instance().layerTreeRoot().addGroup(project_name)
+        loaded = 0
+
+        for layer_class in candidate_layers:
+            try:
+                layer_class.loadLayer(group=project_group)
+                loaded += 1
+            except Exception as e:
+                self.log(f"Błąd ładowania warstwy {getattr(layer_class, 'name', '?')}: {e}")
+
+        if loaded == 0:
+            QgsProject.instance().layerTreeRoot().removeChildNode(project_group)
+            self.message(self.tr("Projekt {} nie posiada warstw dostępnych dla Ciebie").format(project_name), level=1, duration=3)
+        else:
+            self.message(self.tr("Wczytano warstwy projektu: {}").format(project_name), duration=3)
+
+    def offers_projects_reset(self) -> None:
+        """Resetuje stan modułu projektów"""
+        self.offers_projects_source_model.removeRows(0, self.offers_projects_source_model.rowCount())
+        self.tableProjects.horizontalHeader().setVisible(False)
+        self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
+
+        self.project_settings = None
+        self.project_datasource_name = None
+        self.project_id_field = None
+        self.project_name_field = None

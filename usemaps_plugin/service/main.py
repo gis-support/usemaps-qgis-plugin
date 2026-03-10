@@ -55,6 +55,7 @@ class ServiceProvider():
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Zaloguj"))
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
+            self.dockwidget.offers_projects_reset()
             self.dockwidget.clear_treeview()
             self.dockwidget.projects_proxy_model.sourceModel().clear()
 

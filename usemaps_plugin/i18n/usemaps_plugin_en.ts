@@ -157,6 +157,51 @@
         <translation>Name</translation>
     </message>
     <message>
+        <location filename="../service/main_dockwidget.py" line="516"/>
+        <source>Status</source>
+        <translation>Status</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="517"/>
+        <source>Kierownik</source>
+        <translation>Manager</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="604"/>
+        <source>Projekt {} nie posiada powiązanych źródeł danych</source>
+        <translation>Project {} has no associated data sources</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="608"/>
+        <source>Projekt {} nie posiada warstw dostępnych dla Ciebie</source>
+        <translation>Project {} has no layers available to you</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="623"/>
+        <source>Projekt {} nie posiada warstw dostępnych dla Ciebie</source>
+        <translation>Project {} has no layers available to you</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="619"/>
+        <source>Błąd ładowania warstwy {getattr(layer_class, 'name', '?')}: {e}</source>
+        <translation>Error loading layer {getattr(layer_class, 'name', '?')}: {e}</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="625"/>
+        <source>Wczytano warstwy projektu: {}</source>
+        <translation>Loaded layers for project: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="493"/>
+        <source>Brak skonfigurowanego źródła projektów.</source>
+        <translation>No configured project data source.</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="539"/>
+        <source>Brak danych</source>
+        <translation>No data</translation>
+    </message>
+    <message>
         <location filename="../service/main_dockwidget.py" line="269"/>
         <source>Właściciel</source>
         <translation>Owner</translation>
@@ -254,9 +299,19 @@
         <translation>Search/filter layers</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="112"/>
-        <source>Odśwież warstwy</source>
-        <translation>Refresh layers</translation>
+        <location filename="../service/main_dockwidget.ui" line="172"/>
+        <source>Odśwież</source>
+        <translation>Refresh</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="142"/>
+        <source>Szukaj/filtruj projekty</source>
+        <translation>Search/filter projects</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="136"/>
+        <source>Projekty</source>
+        <translation>Projects</translation>
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="103"/>
