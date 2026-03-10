@@ -643,7 +643,7 @@ class FeatureLayer(QObject, Logger):
                 for idx, inner_element in enumerate(element.get('elements', [])):
                     attr = inner_element['attribute']
                     field_id = layer.fields().indexFromName(attr)
-                    
+
                     if field_id != -1:
                         layer.setFieldAlias(field_id, inner_element.get('label', ''))
                         if inner_element.get('required') and field_id != id_field:
@@ -663,16 +663,16 @@ class FeatureLayer(QObject, Logger):
         for attribute in self.datasource.attributes_schema.get('attributes', []):
             field_id = layer.fields().indexFromName(attribute['name'])
             config.setReadOnly(field_id, attribute.get('read_only'))
-            
+
             if attribute.get('type') == 'dict' and attribute.get('allowed_values'):
                 self.setWidgetType(layer, {v: v for v in attribute['allowed_values']}, field_id)
-            
+
             elif attribute.get('type') == 'relation' and 'parent' not in attribute['name']:
                 relation = attribute.get('relation', {})
                 map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
                     relation.get('data_source'), {}
                 ).get(relation.get('attribute'), {}).get(relation.get('representation'))
-                
+
                 if map_values:
                     self.setWidgetType(layer, {d['text']: d['value'] for d in map_values}, field_id)
 

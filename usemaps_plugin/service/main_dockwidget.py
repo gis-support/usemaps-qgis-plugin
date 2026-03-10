@@ -169,6 +169,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.layerTreeView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.message(self.tr('Pobrano schemat warstw'), duration=3)
 
+        self.refresh_layers()
+
 
     def add_layer_to_map(self, index):
         """
@@ -251,10 +253,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             if layers_registry.isSystemLayer(layer):
                 layer_qgis_id = layer.id()
                 layer_id = mappings.get(layer_qgis_id)
+                if layer_id is None:
+                    continue
                 layer_class = layers_registry.layers.get(int(layer_id))
-                if not layer_class:
-                    return
-                layer_class.on_reload.emit(True)
+                
+                if hasattr(layer_class, 'on_reload'):
+                    layer_class.on_reload.emit(True)
+                else:
+                    layer.triggerRepaint()
 
     def filter_projects_view(self, text):
         self.projects_proxy_model.setFilterFixedString(text)
