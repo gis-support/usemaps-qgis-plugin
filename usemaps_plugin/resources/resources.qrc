@@ -5,8 +5,6 @@
         <file>dodaj_warstwy.svg</file>
         <file>refresh.svg</file>
         <file>digitization.svg</file>
-        <file>connected.png</file>
-        <file>disconnected.png</file>
         <file>widget_settings.svg</file>
         <file>widget_connect.svg</file>
         <file>widget_disconnect.svg</file>
@@ -15,5 +13,10 @@
         <file>predefiniowana.svg</file>
         <file>udostepniona.svg</file>
         <file>export.svg</file>
+        <file>export_white.svg</file>
+        <file>refresh_white.svg</file>
+        <file>widget_settings_white.svg</file>
+        <file>widget_connect_white.svg</file>
+        <file>widget_disconnect_white.svg</file>
     </qresource>
 </RCC>
