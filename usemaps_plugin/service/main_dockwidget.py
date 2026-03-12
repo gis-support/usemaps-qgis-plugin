@@ -34,7 +34,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.importLayerDialog = ImportLayerDialog()
 
         for btn, path in ((b, p) for b, p in (
-            (self.connectButton, ":/plugins/usemaps-plugin/widget_connect.svg"),
+            (self.connectButton, ":/plugins/usemaps-plugin/widget_disconnect.svg"),
             (self.authSettingsButton, ":/plugins/usemaps-plugin/widget_settings.svg"),
             (self.refreshButton, ":/plugins/usemaps-plugin/refresh.svg"),
             (self.addLayerButton, ":/plugins/usemaps-plugin/export.svg")

@@ -39,7 +39,7 @@ class ServiceProvider():
         if connected:
             # Połączono z serwerem
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/connected.png"))
-            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_disconnect.svg")
+            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_connect.svg")
             self.dockwidget.connectButton.setIcon(QIcon(self.dockwidget.connectButton.property("icon_path")))
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Wyloguj"))
             self.dockwidget.refreshButton.setEnabled(True)
@@ -53,7 +53,7 @@ class ServiceProvider():
             CONNECTION.disconnect()
 
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/disconnected.png"))
-            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_connect.svg")
+            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_disconnect.svg")
             self.dockwidget.connectButton.setIcon(QIcon(self.dockwidget.connectButton.property("icon_path")))
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Zaloguj"))
             self.dockwidget.refreshButton.setEnabled(False)
