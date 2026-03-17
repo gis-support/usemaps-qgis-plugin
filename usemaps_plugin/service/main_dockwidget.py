@@ -1,11 +1,12 @@
 import os
+from typing import Optional
 
 from qgis.PyQt import QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal, QEvent, Qt, QSortFilterProxyModel
 from qgis.PyQt.QtGui import QIcon, QDropEvent, QDragEnterEvent, QStandardItemModel, QStandardItem
 
 from qgis.utils import iface
-from qgis.core import QgsProject, Qgis
+from qgis.core import QgsProject, Qgis, QgsMapLayer
 
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
@@ -14,6 +15,7 @@ from .gui.import_layer import ImportLayerDialog
 from ..tools.connection import CONNECTION
 from ..tools.project_variables import get_layer_mappings
 from .gui.adaptive_palette import apply_adaptive_palette
+from ..tools.identify_tool import UsemapsIdentifyTool
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -32,14 +34,25 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.loginSettingsDialog = LoginSettingsDialog(self)
         self.importLayerDialog = ImportLayerDialog()
+        self.identify_tool = UsemapsIdentifyTool(self.mapCanvas, self)
 
-        self.mapCanvas = iface.mapCanvas()
-        self.mapCanvas.setAcceptDrops(True)
+        for btn, path in ((b, p) for b, p in (
+            (self.connectButton, ":/plugins/usemaps-plugin/widget_disconnect.svg"),
+            (self.authSettingsButton, ":/plugins/usemaps-plugin/widget_settings.svg"),
+            (self.refreshButton, ":/plugins/usemaps-plugin/refresh.svg"),
+            (self.addLayerButton, ":/plugins/usemaps-plugin/export.svg"),
+            (self.btnIdentify, ":/plugins/usemaps-plugin/info.svg")
+        )):
+            btn.setProperty("icon_path", path)
+            btn.setIcon(QIcon(btn.property("icon_path")))
 
-        self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
+        self.btnIdentify.setToolTip(self.tr("Narzędzie identyfikacji. Włącz, a następnie kliknij obiekt na mapie, aby sprawdzić jego atrybuty."))
+        self.btnIdentify.clicked.connect(self.toggle_identify)
+        iface.layerTreeView().currentLayerChanged.connect(self.validate_active_layer)
+        self.validate_active_layer(iface.activeLayer())
+
         self.connectButton.setCheckable(True)
 
-        self.authSettingsButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_settings.svg"))
         self.authSettingsButton.clicked.connect(self.show_login_settings)
 
         self.layerBrowser.textChanged.connect(self.filter_tree_view)
@@ -67,7 +80,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
-        self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.clicked.connect(self.handle_refresh)
         self.refreshButton.setEnabled(False)
         self.tabWidget.setCurrentIndex(0)
@@ -81,7 +93,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.offers_projects_setup_tableview()
 
-        self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
         self.addLayerButton.clicked.connect(self.importLayerDialog.show)
         self.addLayerButton.setEnabled(False)
 
@@ -93,6 +104,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.hide()
 
     def closeEvent(self, event):
+        self.identify_tool.clear_highlight()
         self.closingPlugin.emit()
         event.accept()
 
@@ -124,6 +136,13 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         Usuwa wzystkie warstwy z drzewa warstw.
         Wywoływane po wylogowaniu.
         """
+        self.identify_tool.clear_highlight()
+
+        self.btnIdentify.setChecked(False)
+        self.btnIdentify.setEnabled(False)
+        self.mapCanvas.unsetMapTool(self.identify_tool)
+
+        self.attributeTabWidget.clear()
 
         if self.proxy_model.sourceModel():
             self.proxy_model.sourceModel().clear()
@@ -201,6 +220,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.refresh_layers()
 
+        self.validate_active_layer(iface.activeLayer())
 
     def add_layer_to_map(self, index):
         """
@@ -664,3 +684,24 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.project_datasource_name = None
         self.project_id_field = None
         self.project_name_field = None
+
+    # Identyfikacja
+
+    def toggle_identify(self, checked: bool) -> None:
+        """Przełącza narzędzie mapy na podstawie stanu przycisku."""
+        if checked:
+            self.mapCanvas.setMapTool(self.identify_tool)
+            self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.identifyTab))
+        else:
+            self.mapCanvas.unsetMapTool(self.identify_tool)
+
+    def validate_active_layer(self, layer: Optional[QgsMapLayer]) -> None:
+        """Włącza lub wyłącza przycisk identyfikacji w zależności od stanu logowania i warstwy."""
+
+        # Przycisk jest aktywny tylko gdy: zalogowano i warstwa jest usemaps
+        self.btnIdentify.setEnabled(bool(CONNECTION.is_connected and layer and layers_registry.isSystemLayer(layer)))
+
+        # Wyłączenie narzędzia na mapie, jeśli przycisk został wyłączony
+        if not self.btnIdentify.isEnabled() and self.btnIdentify.isChecked():
+            self.btnIdentify.setChecked(False)
+            self.mapCanvas.unsetMapTool(self.identify_tool)

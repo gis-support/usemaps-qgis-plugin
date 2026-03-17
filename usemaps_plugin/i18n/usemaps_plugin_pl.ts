@@ -226,6 +226,24 @@
         <source>Zaimportowano mapę: {}</source>
         <translation>Zaimportowano mapę: {}</translation>
     </message>
+        <message>
+        <location filename="../service/main_dockwidget.py" line="50"/>
+        <source>Narzędzie identyfikacji. Włącz, a następnie kliknij obiekt na mapie, aby sprawdzić jego atrybuty.</source>
+        <translation>Narzędzie identyfikacji. Włącz, a następnie kliknij obiekt na mapie, aby sprawdzić jego atrybuty.</translation>
+    </message>
+</context>
+<context>
+    <name>UsemapsIdentifyTool</name>
+    <message>
+        <location filename="../tools/identify_tool.py" line="138"/>
+        <source>Atrybuty</source>
+        <translation>Atrybuty</translation>
+    </message>
+    <message>
+        <location filename="../tools/identify_tool.py" line="144"/>
+        <source>Atrybuty</source>
+        <translation>Atrybuty</translation>
+    </message>
 </context>
 <context>
     <name>NetworkHandler</name>
@@ -327,6 +345,16 @@
         <location filename="../service/main_dockwidget.ui" line="120"/>
         <source>Odśwież</source>
         <translation>Odśwież</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="87"/>
+        <source>Identyfikacja Usemaps</source>
+        <translation>Identyfikacja Usemaps</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="187"/>
+        <source>Identyfikacja</source>
+        <translation>Identyfikacja</translation>
     </message>
 </context>
 <context>

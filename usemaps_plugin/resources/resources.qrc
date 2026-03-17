@@ -15,5 +15,12 @@
         <file>predefiniowana.svg</file>
         <file>udostepniona.svg</file>
         <file>export.svg</file>
+        <file>export_white.svg</file>
+        <file>refresh_white.svg</file>
+        <file>widget_settings_white.svg</file>
+        <file>widget_connect_white.svg</file>
+        <file>widget_disconnect_white.svg</file>
+        <file>info.svg</file>
+        <file>info_white.svg</file>
     </qresource>
 </RCC>
