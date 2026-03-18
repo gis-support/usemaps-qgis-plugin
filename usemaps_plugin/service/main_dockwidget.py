@@ -97,6 +97,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.addLayerButton.setEnabled(False)
 
         self.mapCanvas.installEventFilter(self)
+        self.mapCanvas.mapToolSet.connect(lambda tool: self.btnIdentify.setChecked(tool == self.identify_tool))
 
         apply_adaptive_palette(self)
 
