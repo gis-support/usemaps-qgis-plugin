@@ -1,5 +1,7 @@
 import time
 from datetime import datetime
+import json
+import re
 
 from typing import List, Iterable, Any, Dict
 from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsEditFormConfig, QgsEditorWidgetSetup,
@@ -73,6 +75,8 @@ class FeatureLayer(QObject, Logger):
         self.write_permission = data['write_permission']
         self.valid_fields = []
         self.filter_expression = data.get("filter_expression")
+
+        self._clear_dependencies = {}  # Śledzi zależności: {pole_nadrzędne: set(pola_zależne)}
 
         self.connectSignals()
 
@@ -625,6 +629,19 @@ class FeatureLayer(QObject, Logger):
                     continue
         return addedFeatures
 
+    def _on_parent_changed_clear_child(self, feature_id, field_idx, new_value):
+        layer = self.sender()
+        if not layer:
+            return
+
+        changed_field = layer.fields().field(field_idx).name()
+        if changed_field in self._clear_dependencies:
+            for child_field in self._clear_dependencies[changed_field]:
+                child_idx = layer.fields().indexFromName(child_field)
+                if child_idx != -1 and layer.getFeature(feature_id).attribute(child_idx) not in (None, NULL, ''):
+                    layer.changeAttributeValue(feature_id, child_idx, NULL)
+            layer.updatedFields.emit()
+
     def setLayerAttributeForm(self, layer: QgsVectorLayer, form_schema: dict):
 
         config = layer.editFormConfig()
@@ -668,15 +685,207 @@ class FeatureLayer(QObject, Logger):
                 self.setWidgetType(layer, {v: v for v in attribute['allowed_values']}, field_id)
 
             elif attribute.get('type') == 'relation' and 'parent' not in attribute['name']:
-                relation = attribute.get('relation', {})
-                map_values = RELATION_VALUES_MAPPING_REGISTRY.get(
-                    relation.get('data_source'), {}
-                ).get(relation.get('attribute'), {}).get(relation.get('representation'))
+                if attribute.get('relation', {}).get('filter_expression'):
+                    parent_field = next(
+                        (re.search(r'{{(.*?)}}', str(val)).group(1)
+                         for k, val in json.loads(re.sub(r'({{[^}]+}})', r'"\1"', attribute.get('relation', {}).get('filter_expression', '{}'))).items()
+                         if 'EQUAL' in k and re.search(r'{{(.*?)}}', str(val))),
+                        None
+                    )
+                    if parent_field:
+                        self._clear_dependencies.setdefault(parent_field, set()).add(attribute['name'])
+                        try:
+                            layer.attributeValueChanged.disconnect(self._on_parent_changed_clear_child)
+                        except TypeError:
+                            pass
+                        layer.attributeValueChanged.connect(self._on_parent_changed_clear_child)
 
-                if map_values:
-                    self.setWidgetType(layer, {d['text']: d['value'] for d in map_values}, field_id)
+                relation = attribute.get('relation', {})
+                helper_layer = self._get_or_create_helper_layer(
+                    relation.get('data_source', ''),
+                    relation.get('attribute', ''),
+                    relation.get('representation', ''),
+                )
+                if helper_layer:
+                    self._setup_value_relation(layer, field_id, attribute, helper_layer)
+                    continue
+
+                ds = relation.get('data_source', '')
+                attr_key = relation.get('attribute', '')
+                repr_key = relation.get('representation', '')
+                cached = (
+                    RELATION_VALUES_MAPPING_REGISTRY
+                    .get(ds, {})
+                    .get(attr_key, {})
+                    .get(repr_key)
+                )
+                if cached:
+                    self.setWidgetType(
+                        layer,
+                        {d['text']: d['value'] for d in cached},
+                        field_id
+                    )
+
+                relation = attribute.get('relation', {})
+                helper_layer = self._get_or_create_helper_layer(
+                    relation.get('data_source', ''),
+                    relation.get('attribute', ''),
+                    relation.get('representation', ''),
+                )
+                if helper_layer:
+                    self._setup_value_relation(layer, field_id, attribute, helper_layer)
+                    continue
+
+                ds = relation.get('data_source', '')
+                attr_key = relation.get('attribute', '')
+                repr_key = relation.get('representation', '')
+                cached = (
+                    RELATION_VALUES_MAPPING_REGISTRY
+                    .get(ds, {})
+                    .get(attr_key, {})
+                    .get(repr_key)
+                )
+                if cached:
+                    self.setWidgetType(
+                        layer,
+                        {d['text']: d['value'] for d in cached},
+                        field_id
+                    )
 
         layer.setEditFormConfig(config)
+
+    def _get_or_create_helper_layer(self, datasource_name: str, key_attr: str, repr_attr: str):
+        if not datasource_name or not key_attr or not repr_attr:
+            return None
+
+        cache_key = f'_helper_layer_{datasource_name}'
+
+        cached = DATA_SOURCE_REGISTRY.get(cache_key)
+        if cached is not None:
+            if QgsProject.instance().mapLayer(cached.id()):
+                return cached
+
+            del DATA_SOURCE_REGISTRY[cache_key]
+
+        values_list = (
+            RELATION_VALUES_MAPPING_REGISTRY
+            .get(datasource_name, {})
+            .get(key_attr, {})
+            .get(repr_attr, [])
+        )
+        if not values_list:
+            return None
+
+        ds_meta = CONNECTION.get(f'/api/v2/datasources/{datasource_name}', sync=True)
+        if not ds_meta or not ds_meta.get('data'):
+            return None
+
+        ds_attrs = ds_meta['data']['attributes_schema']['attributes']
+
+        fields_parts = []
+        for attr in ds_attrs:
+            dt = attr.get('data_type', {}).get('name', 'text')
+            name = attr['name']
+            if dt == 'geometric' or name == 'geom':
+                continue
+            if dt in ('text', 'hyperlink'):
+                fields_parts.append(f'{name}:string')
+            elif dt in ('integer',):
+                fields_parts.append(f'{name}:integer')
+            elif dt in ('decimal', 'float'):
+                fields_parts.append(f'{name}:double')
+            else:
+                fields_parts.append(f'{name}:string')
+
+        fields_str = '&field='.join(fields_parts)
+        helper = QgsVectorLayer(f'NoGeometry?field={fields_str}', datasource_name, 'memory')
+
+        if not helper.isValid():
+            return None
+
+        features_resp = CONNECTION.post(
+            f'/api/v2/datasources-features/read/{datasource_name}',
+            payload={"data": {"filter_expression": {}}},
+            sync=True
+        )
+        if not features_resp or not features_resp.get('data'):
+            return None
+
+        layer_fields = helper.fields()
+        field_names = [layer_fields.field(i).name() for i in range(layer_fields.count())]
+
+        features_to_add = []
+        for feat in features_resp['data'].get('features', []):
+            props = feat.get('properties', {})
+            props[ds_meta['data']['attributes_schema']['id_name']] = feat.get('id')
+            qf = QgsFeature(layer_fields)
+            attrs = []
+            for fname in field_names:
+                attrs.append(props.get(fname))
+            qf.setAttributes(attrs)
+            features_to_add.append(qf)
+
+        helper.dataProvider().addFeatures(features_to_add)
+
+        QgsProject.instance().addMapLayer(helper, False)
+
+        DATA_SOURCE_REGISTRY[cache_key] = helper
+        return helper
+
+    def _setup_value_relation(self, layer, field_id, attribute, helper_layer):
+        relation = attribute.get('relation', {})
+        filter_expr_str = relation.get('filter_expression', '{}')
+        filter_expr_value = relation.get('filter_expression_value', 'attribute')
+        attrs = self.datasource.attributes_schema.get('attributes', [])
+
+        filter_expression = None
+        parent_field = None
+        try:
+            equal_cond = next(
+                (v for k, v in json.loads(
+                    re.sub(r'({{[^}]+}})', r'"\1"', filter_expr_str)
+                ).items() if 'EQUAL' in k),
+                {}
+            )
+            for key, val in equal_cond.items():
+                m = re.search(r'{{(.*?)}}', val)
+                if not m:
+                    continue
+                parent_field = m.group(1)
+                child_col = key.split('.')[-1]
+
+                if filter_expr_value == 'representation':
+                    parent_ds = next(
+                        (a.get('relation', {}).get('data_source', '')
+                         for a in attrs if a.get('name') == parent_field), '')
+                    parent_key = next(
+                        (a.get('relation', {}).get('attribute', '')
+                         for a in attrs if a.get('name') == parent_field), '')
+                    parent_repr = next(
+                        (a.get('relation', {}).get('representation', '')
+                         for a in attrs if a.get('name') == parent_field), '')
+                    filter_expression = (
+                        f'"{child_col}" = attribute('
+                        f"get_feature('{parent_ds}', '{parent_key}', current_value('{parent_field}')), "
+                        f"'{parent_repr}')"
+                    )
+                else:
+                    filter_expression = f'"{child_col}" = current_value(\'{parent_field}\')'
+                break
+        except Exception as e:
+            pass
+
+        config = {
+            'Layer': helper_layer.id(),
+            'Key': relation.get('attribute'),
+            'Value': relation.get('representation'),
+            'AllowNull': True,
+            'OrderByValue': True,
+        }
+        if filter_expression:
+            config['FilterExpression'] = filter_expression
+
+        layer.setEditorWidgetSetup(field_id, QgsEditorWidgetSetup('ValueRelation', config))
 
     def setWidgetType(self, layer: QgsVectorLayer, dict_values: dict, field_id: int):
         """ Ustawianie typu atrybutu w formularzu atrybutów """
