@@ -3,7 +3,7 @@ from datetime import datetime
 import json
 import re
 
-from typing import List, Iterable, Any, Dict
+from typing import List, Iterable, Any, Dict, Optional
 from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsEditFormConfig, QgsEditorWidgetSetup,
                        QgsAttributeEditorContainer, QgsAttributeEditorField, QgsMapLayer, NULL, QgsFieldConstraints,
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
@@ -629,7 +629,8 @@ class FeatureLayer(QObject, Logger):
                     continue
         return addedFeatures
 
-    def _on_parent_changed_clear_child(self, feature_id, field_idx, new_value):
+    def _on_parent_changed_clear_child(self, feature_id: int, field_idx: int, new_value: Any) -> None:
+        """Czyści wartości powiązanych pól podrzędnych w przypadku zmiany wartości w polu nadrzędnym"""
         layer = self.sender()
         if not layer:
             return
@@ -642,8 +643,8 @@ class FeatureLayer(QObject, Logger):
                     layer.changeAttributeValue(feature_id, child_idx, NULL)
             layer.updatedFields.emit()
 
-    def setLayerAttributeForm(self, layer: QgsVectorLayer, form_schema: dict):
-
+    def setLayerAttributeForm(self, layer: QgsVectorLayer, form_schema: dict) -> None:
+        """Konfiguruje formularz atrybutów dla warstwy, opierając się na przekazanym schemacie i ustawieniach relacji"""
         config = layer.editFormConfig()
         id_field = layer.fields().indexFromName(self.datasource.id_column_name)
         layer.setFieldAlias(id_field, self.tr('Identyfikator'))
@@ -670,9 +671,8 @@ class FeatureLayer(QObject, Logger):
                                 QgsFieldConstraints.ConstraintStrength.ConstraintStrengthHard
                             )
 
-                    policy = inner_element.get('default_value_policy')
-                    if isinstance(policy, dict):
-                        self.default_values[attr] = policy.get('value')
+                    if isinstance(inner_element.get('default_value_policy'), dict):
+                        self.default_values[attr] = inner_element.get('default_value_policy').get('value')
 
                     tab.addChildElement(QgsAttributeEditorField(attr, idx, tab))
                 config.addTab(tab)
@@ -700,61 +700,25 @@ class FeatureLayer(QObject, Logger):
                             pass
                         layer.attributeValueChanged.connect(self._on_parent_changed_clear_child)
 
-                relation = attribute.get('relation', {})
-                helper_layer = self._get_or_create_helper_layer(
-                    relation.get('data_source', ''),
-                    relation.get('attribute', ''),
-                    relation.get('representation', ''),
-                )
-                if helper_layer:
+                if helper_layer := self._get_or_create_helper_layer(
+                    attribute.get('relation', {}).get('data_source', ''),
+                    attribute.get('relation', {}).get('attribute', ''),
+                    attribute.get('relation', {}).get('representation', ''),
+                ):
                     self._setup_value_relation(layer, field_id, attribute, helper_layer)
                     continue
 
-                ds = relation.get('data_source', '')
-                attr_key = relation.get('attribute', '')
-                repr_key = relation.get('representation', '')
-                cached = (
-                    RELATION_VALUES_MAPPING_REGISTRY
-                    .get(ds, {})
-                    .get(attr_key, {})
-                    .get(repr_key)
-                )
-                if cached:
-                    self.setWidgetType(
-                        layer,
-                        {d['text']: d['value'] for d in cached},
-                        field_id
-                    )
-
-                relation = attribute.get('relation', {})
-                helper_layer = self._get_or_create_helper_layer(
-                    relation.get('data_source', ''),
-                    relation.get('attribute', ''),
-                    relation.get('representation', ''),
-                )
-                if helper_layer:
-                    self._setup_value_relation(layer, field_id, attribute, helper_layer)
-                    continue
-
-                ds = relation.get('data_source', '')
-                attr_key = relation.get('attribute', '')
-                repr_key = relation.get('representation', '')
-                cached = (
-                    RELATION_VALUES_MAPPING_REGISTRY
-                    .get(ds, {})
-                    .get(attr_key, {})
-                    .get(repr_key)
-                )
-                if cached:
-                    self.setWidgetType(
-                        layer,
-                        {d['text']: d['value'] for d in cached},
-                        field_id
-                    )
+                if cached := (RELATION_VALUES_MAPPING_REGISTRY
+                    .get(attribute.get('relation', {}).get('data_source', ''), {})
+                    .get(attribute.get('relation', {}).get('attribute', ''), {})
+                    .get(attribute.get('relation', {}).get('representation', ''))
+                ):
+                    self.setWidgetType(layer, {d['text']: d['value'] for d in cached}, field_id)
 
         layer.setEditFormConfig(config)
 
-    def _get_or_create_helper_layer(self, datasource_name: str, key_attr: str, repr_attr: str):
+    def _get_or_create_helper_layer(self, datasource_name: str, key_attr: str, repr_attr: str) -> Optional[QgsVectorLayer]:
+        """Pobiera z rejestru lub tworzy nową pomocniczą warstwę bez geometrii dla relacji wartości"""
         if not datasource_name or not key_attr or not repr_attr:
             return None
 
@@ -832,7 +796,8 @@ class FeatureLayer(QObject, Logger):
         DATA_SOURCE_REGISTRY[cache_key] = helper
         return helper
 
-    def _setup_value_relation(self, layer, field_id, attribute, helper_layer):
+    def _setup_value_relation(self, layer: QgsVectorLayer, field_id: int, attribute: dict, helper_layer: QgsVectorLayer) -> None:
+        """ Ustawia powiązanie wartości (Value Relation) w formularzu na podstawie konfiguracji atrybutu i warstwy pomocniczej. """
         relation = attribute.get('relation', {})
         filter_expr_str = relation.get('filter_expression', '{}')
         filter_expr_value = relation.get('filter_expression_value', 'attribute')
@@ -872,7 +837,7 @@ class FeatureLayer(QObject, Logger):
                 else:
                     filter_expression = f'"{child_col}" = current_value(\'{parent_field}\')'
                 break
-        except Exception as e:
+        except Exception:
             pass
 
         config = {
@@ -887,7 +852,7 @@ class FeatureLayer(QObject, Logger):
 
         layer.setEditorWidgetSetup(field_id, QgsEditorWidgetSetup('ValueRelation', config))
 
-    def setWidgetType(self, layer: QgsVectorLayer, dict_values: dict, field_id: int):
+    def setWidgetType(self, layer: QgsVectorLayer, dict_values: dict, field_id: int) -> None:
         """ Ustawianie typu atrybutu w formularzu atrybutów """
         value_map = [{"": NULL}]
         value_map.extend({str(text): str(value)} for text, value in dict_values.items())
@@ -895,7 +860,7 @@ class FeatureLayer(QObject, Logger):
             'ValueMap', {'map': value_map})
         layer.setEditorWidgetSetup(field_id, setup)
 
-    def getFeaturesDbIds(self, qgis_ids, layer):
+    def getFeaturesDbIds(self, qgis_ids: list, layer: QgsVectorLayer) -> list:
         return [f[self.datasource.id_column_name] for f in layer.dataProvider().getFeatures( QgsFeatureRequest().setFilterFids( qgis_ids ))]
 
     def manageFeatures(self):
