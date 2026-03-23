@@ -200,7 +200,7 @@ class FeatureLayer(QObject, Logger):
             fields_table = []
             for field in (f for v_name in self.valid_fields for f in self.fields if f['name'] == v_name):
 
-                if field['name'] in ('topogeom', self.datasource.geom_column_name):
+                if field['name'] == self.datasource.geom_column_name:
                     continue
 
                 data_type = field.get('data_type')
@@ -599,7 +599,7 @@ class FeatureLayer(QObject, Logger):
             attributes = []
             for field in (f for v_name in self.valid_fields for f in self.datasource.attributes_schema['attributes'] if f['name'] == v_name):
 
-                if field['name'] in ('topogeom', self.datasource.geom_column_name):
+                if field['name'] == self.datasource.geom_column_name:
                     continue
 
                 if field['name'] == self.datasource.id_column_name:
