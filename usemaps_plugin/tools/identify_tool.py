@@ -149,6 +149,8 @@ class UsemapsIdentifyTool(QgsMapTool):
             self.tr("Atrybuty")
         )
 
+        self.dock.attributeTabWidget.tabBar().hide()
+
         self.dock.tabWidget.setCurrentIndex(self.dock.tabWidget.indexOf(self.dock.identifyTab))
 
     def _setup_scroll_area(self, scroll: QScrollArea, content: QWidget) -> QScrollArea:
