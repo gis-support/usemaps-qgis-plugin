@@ -11,7 +11,7 @@ from qgis.PyQt.QtCore import Qt, QDate, QDateTime
 from qgis.PyQt.QtGui import QCursor, QColor
 from qgis.core import (
     QgsRectangle, QgsFeatureRequest, QgsMapLayer,
-    QgsCoordinateTransform, QgsProject, QgsGeometry, QgsPointXY,
+    QgsCoordinateTransform, QgsProject, QgsGeometry,
     QgsWkbTypes, NULL, QgsAttributeEditorElement, QgsFeature
 )
 
@@ -23,17 +23,13 @@ class UsemapsIdentifyTool(QgsMapTool):
         super().__init__(canvas)
         self.canvas = canvas
         self.dock = dock_widget
-        self.startPoint = None
+        self.identified_layer = None
 
         self.geometry = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
         self.geometry.setColor(QColor('red'))
         self.geometry.setFillColor(QColor(255, 165, 0, 100))
         self.geometry.setWidth(3)
-
-        # Prostokąt selekcji przy przeciąganiu
-        self.selectionRect = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
-        self.selectionRect.setColor(QColor('orange'))
-        self.selectionRect.setFillColor(QColor(255, 122, 52, 100))
+        self.canvas.layersChanged.connect(self._verify_layer_visibility)
 
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
 
@@ -43,82 +39,42 @@ class UsemapsIdentifyTool(QgsMapTool):
             USER_CACHE[user_id] = (CONNECTION.get(f'/api/users/{user_id}', sync=True) or {}).get('data', {}).get('name', user_id)
         return USER_CACHE[user_id]
 
-    def canvasPressEvent(self, e: QgsMapMouseEvent) -> None:
-        """Rejestruje punkt początkowy kliknięcia LPM"""
-        if (self.canvas.currentLayer() and
-            self.canvas.currentLayer().type() == QgsMapLayer.VectorLayer and
-            e.button() == Qt.MouseButton.LeftButton):
-            self.startPoint = e.mapPoint()
-
-    def canvasMoveEvent(self, e: QgsMapMouseEvent) -> None:
-        """Rysuje prostokąt zaznaczenia podczas przeciągania myszą"""
-        if (self.canvas.currentLayer() and
-            self.canvas.currentLayer().type() == QgsMapLayer.VectorLayer and
-            e.buttons() == Qt.MouseButton.LeftButton and self.startPoint):
-            self.selectionRect.reset(QgsWkbTypes.PolygonGeometry)
-            self.selectionRect.addPoint(self.startPoint)
-            self.selectionRect.addPoint(QgsPointXY(self.startPoint.x(), e.mapPoint().y()))
-            self.selectionRect.addPoint(e.mapPoint())
-            self.selectionRect.addPoint(QgsPointXY(e.mapPoint().x(), self.startPoint.y()))
+    def _verify_layer_visibility(self) -> None:
+        """Czyści wyniki, jeśli zidentyfikowana warstwa przestała być widoczna lub została usunięta"""
+        if self.identified_layer and self.identified_layer not in self.canvas.layers():
+            self._process_feature(None, None)
 
     def canvasReleaseEvent(self, e: QgsMapMouseEvent) -> None:
-        """Identyfikuje obiekt na podstawie kliknięcia punktu lub zaznaczonego obszaru"""
-        if not self.canvas.currentLayer() or self.canvas.currentLayer().type() != QgsMapLayer.VectorLayer:
+        """Identyfikuje obiekt na podstawie kliknięcia z uwzględnieniem tolerancji"""
+        layer = self.canvas.currentLayer()
+
+        if not layer or layer.type() != QgsMapLayer.VectorLayer or e.button() != Qt.MouseButton.LeftButton or layer not in self.canvas.layers():
             return
 
-        if e.button() == Qt.MouseButton.LeftButton:
-            if self.selectionRect.asGeometry().boundingBox().isEmpty():
-                try:
-                    self._process_feature(
-                        self._find_best_feature(
-                            self.canvas.currentLayer(),
-                            QgsGeometry.fromPointXY(
-                                QgsCoordinateTransform(
-                                    self.canvas.mapSettings().destinationCrs(),
-                                    self.canvas.currentLayer().crs(),
-                                    QgsProject.instance()
-                                ).transform(self.toMapCoordinates(e.pos()))
-                            )
-                        ),
-                        self.canvas.currentLayer()
-                    )
-                except Exception:
-                    pass
-            else:
-                self._process_feature(
-                    next(
-                        (f for f in self.canvas.currentLayer().getFeatures(
-                            QgsFeatureRequest().setFilterRect(
-                                QgsCoordinateTransform(
-                                    self.canvas.mapSettings().destinationCrs(),
-                                    self.canvas.currentLayer().crs(),
-                                    QgsProject.instance()
-                                ).transform(self.selectionRect.asGeometry().boundingBox())
-                            )
-                        )),
-                        None
-                    ),
-                    self.canvas.currentLayer()
+        search_geom = QgsGeometry.fromRect(
+            QgsCoordinateTransform(
+                self.canvas.mapSettings().destinationCrs(),
+                self.canvas.currentLayer().crs(),
+                QgsProject.instance()
+            ).transformBoundingBox(
+                QgsRectangle(
+                    self.toMapCoordinates(e.pos()).x() - (self.canvas.mapUnitsPerPixel() * 3),
+                    self.toMapCoordinates(e.pos()).y() - (self.canvas.mapUnitsPerPixel() * 3),
+                    self.toMapCoordinates(e.pos()).x() + (self.canvas.mapUnitsPerPixel() * 3),
+                    self.toMapCoordinates(e.pos()).y() + (self.canvas.mapUnitsPerPixel() * 3)
                 )
+            )
+        )
 
-        self.startPoint = None
-        self.selectionRect.reset(QgsWkbTypes.PolygonGeometry)
-
-    def _find_best_feature(self, layer: QgsMapLayer, click_geom: QgsGeometry) -> Optional[QgsFeature]:
-        """Wybiera obiekt. Priorytetyzuje najmniejszą powierzchnię."""
-        return min(
-            (f for f in layer.getFeatures(
-                QgsFeatureRequest().setFilterRect(
-                    QgsRectangle(
-                        click_geom.asPoint().x() - (self.canvas.mapUnitsPerPixel() * 8),
-                        click_geom.asPoint().y() - (self.canvas.mapUnitsPerPixel() * 8),
-                        click_geom.asPoint().x() + (self.canvas.mapUnitsPerPixel() * 8),
-                        click_geom.asPoint().y() + (self.canvas.mapUnitsPerPixel() * 8)
-                    )
-                )
-            ) if f.geometry() and f.geometry().intersects(click_geom)),
-            key=lambda x: x.geometry().area(),
-            default=None
+        self._process_feature(
+            min(
+                (f for f in self.canvas.currentLayer().getFeatures(
+                    QgsFeatureRequest().setFilterRect(search_geom.boundingBox())
+                ) if f.geometry() and f.geometry().intersects(search_geom)),
+                key=lambda x: (x.geometry().type(), x.geometry().area()),
+                default=None
+            ),
+            self.canvas.currentLayer()
         )
 
     def _extract_field_names(self, elements, valid_fields):
@@ -134,8 +90,10 @@ class UsemapsIdentifyTool(QgsMapTool):
         if not feature:
             self.clear_highlight()  # Czyści obrys obiektu
             self.dock.attributeTabWidget.clear()  # Czyści atrybuty w panelu bocznym
+            self.identified_layer = None
             return
 
+        self.identified_layer = layer
         self.geometry.reset(layer.geometryType())
         self.geometry.addGeometry(feature.geometry(), layer)
 
@@ -225,7 +183,6 @@ class UsemapsIdentifyTool(QgsMapTool):
     def clear_highlight(self) -> None:
         """Usuwa obrysy i podświetlenia z mapy"""
         self.geometry.reset()
-        self.selectionRect.reset(QgsWkbTypes.PolygonGeometry)
 
     def deactivate(self) -> None:
         """Dezaktywuje narzędzie i sprząta interfejs"""
