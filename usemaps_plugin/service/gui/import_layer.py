@@ -3,7 +3,7 @@ import os
 from qgis.PyQt import uic
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.PyQt.QtCore import Qt, QCoreApplication
-from PyQt5.QtNetwork import QHttpMultiPart, QHttpPart, QNetworkRequest, QNetworkReply
+from qgis.PyQt.QtNetwork import QHttpMultiPart, QHttpPart, QNetworkRequest, QNetworkReply
 from qgis.utils import iface
 from qgis.core import QgsMapLayerProxyModel, QgsJsonExporter
 
@@ -18,7 +18,7 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
     def __init__(self):
         super(ImportLayerDialog, self).__init__(parent=iface.mainWindow())
         self.setupUi(self)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.layer_combobox.setFilters(QgsMapLayerProxyModel.VectorLayer)
 
         self.cancel_button.clicked.connect(self.hide)

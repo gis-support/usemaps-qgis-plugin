@@ -35,22 +35,22 @@
         <translation>API communication error: {}</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="50"/>
+        <location filename="../tools/connection.py" line="49"/>
         <source>Wystąpił nieoczekiwany błąd. Kod błędu: {}</source>
         <translation>An unexpected error occurred. Error code: {}</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="227"/>
+        <location filename="../tools/connection.py" line="246"/>
         <source>Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem</source>
         <translation>Server connection error. Check if the application address is correct or contact your administrator</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="116"/>
+        <location filename="../tools/connection.py" line="134"/>
         <source>Połączono</source>
         <translation>Connected</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="150"/>
+        <location filename="../tools/connection.py" line="168"/>
         <source>Rozłączono</source>
         <translation>Disconnected</translation>
     </message>
@@ -102,33 +102,86 @@
         <source>Wyślij kod ponownie</source>
         <translation>Resend code</translation>
     </message>
+    <message>
+        <location filename="../service/gui/import_layer.ui" line="26"/>
+        <source>Dodaj nową warstwę</source>
+        <translation>Add new layer</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.ui" line="34"/>
+        <source>Wybierz warstwę:</source>
+        <translation>Select layer:</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.ui" line="73"/>
+        <source>Dodaj</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.ui" line="92"/>
+        <source>Anuluj</source>
+        <translation>Cancel</translation>
+    </message>
 </context>
 <context>
     <name>FeatureLayer</name>
     <message>
-        <location filename="../service/layers/datasources.py" line="211"/>
+        <location filename="../service/layers/datasources.py" line="225"/>
         <source>Wczytywanie warstwy: {}...</source>
         <translation>Loading layer: {}...</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="255"/>
+        <location filename="../service/layers/datasources.py" line="548"/>
         <source>Ładowanie obiektów</source>
         <translation>Loading features</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="258"/>
+        <location filename="../service/layers/datasources.py" line="553"/>
         <source>Pomyślnie wczytano dane warstwy: {}, czas: {}</source>
         <translation>Layer data loaded successfully: {}, time: {}</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="333"/>
+        <location filename="../service/layers/datasources.py" line="632"/>
         <source>Identyfikator</source>
         <translation>ID</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="449"/>
+        <location filename="../service/layers/datasources.py" line="724"/>
         <source>Pomyślnie zmodyfikowano dane warstwy: {}</source>
         <translation>Layer data modified successfully: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/layers/datasources.py" line="460"/>
+        <source>Pozostałe</source>
+        <translation>Others</translation>
+    </message>
+</context>
+<context>
+    <name>ImportLayerDialog</name>
+    <message>
+        <location filename="../service/gui/import_layer.py" line="37"/>
+        <source>Wysyłanie...</source>
+        <translation>Uploading...</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.py" line="68"/>
+        <source>Sukces</source>
+        <translation>Success</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.py" line="68"/>
+        <source>Warstwa została dodana do Usemaps.</source>
+        <translation>The layer has been added to Usemaps.</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.py" line="71"/>
+        <source>Błąd</source>
+        <translation>Error</translation>
+    </message>
+    <message>
+        <location filename="../service/gui/import_layer.py" line="74"/>
+        <source>Dodaj</source>
+        <translation>Add</translation>
     </message>
 </context>
 <context>
@@ -147,37 +200,32 @@
 <context>
     <name>MainDockWidget</name>
     <message>
-        <location filename="../service/main_dockwidget.py" line="159"/>
+        <location filename="../service/main_dockwidget.py" line="200"/>
         <source>Pobrano schemat warstw</source>
         <translation>Layers schema downloaded</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="268"/>
+        <location filename="../service/main_dockwidget.py" line="543"/>
         <source>Nazwa</source>
         <translation>Name</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="516"/>
+        <location filename="../service/main_dockwidget.py" line="543"/>
         <source>Status</source>
         <translation>Status</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="517"/>
+        <location filename="../service/main_dockwidget.py" line="543"/>
         <source>Kierownik</source>
         <translation>Manager</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="604"/>
+        <location filename="../service/main_dockwidget.py" line="634"/>
         <source>Projekt {} nie posiada powiązanych źródeł danych</source>
         <translation>Project {} has no associated data sources</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="608"/>
-        <source>Projekt {} nie posiada warstw dostępnych dla Ciebie</source>
-        <translation>Project {} has no layers available to you</translation>
-    </message>
-    <message>
-        <location filename="../service/main_dockwidget.py" line="623"/>
+        <location filename="../service/main_dockwidget.py" line="653"/>
         <source>Projekt {} nie posiada warstw dostępnych dla Ciebie</source>
         <translation>Project {} has no layers available to you</translation>
     </message>
@@ -187,44 +235,49 @@
         <translation>Error loading layer {getattr(layer_class, 'name', '?')}: {e}</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="625"/>
+        <location filename="../service/main_dockwidget.py" line="655"/>
         <source>Wczytano warstwy projektu: {}</source>
         <translation>Loaded layers for project: {}</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="493"/>
+        <location filename="../service/main_dockwidget.py" line="523"/>
         <source>Brak skonfigurowanego źródła projektów.</source>
         <translation>No configured project data source.</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="539"/>
+        <location filename="../service/main_dockwidget.py" line="566"/>
         <source>Brak danych</source>
         <translation>No data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="269"/>
+        <location filename="../service/main_dockwidget.py" line="319"/>
         <source>Właściciel</source>
         <translation>Owner</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="270"/>
+        <location filename="../service/main_dockwidget.py" line="319"/>
         <source>Data ostatniej edycji</source>
         <translation>Last edited</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="363"/>
+        <location filename="../service/main_dockwidget.py" line="421"/>
         <source>Błąd pobierania danych mapy</source>
         <translation>Error fetching map data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="370"/>
+        <location filename="../service/main_dockwidget.py" line="428"/>
         <source>Mapa nie zawiera żadnych warstw.</source>
         <translation>The map contains no layers.</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="407"/>
+        <location filename="../service/main_dockwidget.py" line="460"/>
         <source>Zaimportowano mapę: {}</source>
         <translation>Map imported: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="150"/>
+        <source>Tylko administrator może dodać nową warstwę do organizacji</source>
+        <translation>Only an administrator can add a new layer to the organization</translation>
     </message>
 </context>
 <context>
@@ -243,7 +296,7 @@
         <translation>Logout</translation>
     </message>
     <message>
-        <location filename="../service/main.py" line="52"/>
+        <location filename="../service/main.py" line="55"/>
         <source>Zaloguj</source>
         <translation>Login</translation>
     </message>
@@ -251,12 +304,12 @@
 <context>
     <name>TwoFADialog</name>
     <message>
-        <location filename="../service/gui/two_fa.py" line="68"/>
+        <location filename="../service/gui/two_fa.py" line="71"/>
         <source>Weryfikacja dwuetapowa</source>
         <translation>Two-factor verification</translation>
     </message>
     <message>
-        <location filename="../service/gui/two_fa.py" line="68"/>
+        <location filename="../service/gui/two_fa.py" line="71"/>
         <source>Wysłano kod weryfikacyjny ponownie.</source>
         <translation>Verification code resent.</translation>
     </message>
@@ -274,27 +327,27 @@
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;A tool for loading data from Usemaps into QGIS and editing it collaboratively with your team.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="41"/>
+        <location filename="../service/main_dockwidget.ui" line="31"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Dowiedz się więcej o &lt;/span&gt;&lt;a href=&quot;https://usemaps.com/&quot;&gt;&lt;span style=&quot; font-size:10pt; text-decoration: underline; color:#0000ff;&quot;&gt;Usemaps&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:10pt;&quot;&gt;Learn more about &lt;/span&gt;&lt;a href=&quot;https://usemaps.com/en/&quot;&gt;&lt;span style=&quot; font-size:10pt; text-decoration: underline; color:#0000ff;&quot;&gt;Usemaps&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="63"/>
+        <location filename="../service/main_dockwidget.ui" line="53"/>
         <source>Zaloguj</source>
         <translation>Login</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="70"/>
+        <location filename="../service/main_dockwidget.ui" line="60"/>
         <source>Ustawienia logowania</source>
         <translation>Login settings</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="89"/>
+        <location filename="../service/main_dockwidget.ui" line="73"/>
         <source>Dane</source>
         <translation>Data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="98"/>
+        <location filename="../service/main_dockwidget.ui" line="79"/>
         <source>Szukaj/filtruj warstwy</source>
         <translation>Search/filter layers</translation>
     </message>
@@ -304,22 +357,22 @@
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="142"/>
+        <location filename="../service/main_dockwidget.ui" line="133"/>
         <source>Szukaj/filtruj projekty</source>
         <translation>Search/filter projects</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="136"/>
+        <location filename="../service/main_dockwidget.ui" line="127"/>
         <source>Projekty</source>
         <translation>Projects</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="103"/>
+        <location filename="../service/main_dockwidget.ui" line="94"/>
         <source>Mapy</source>
         <translation>Maps</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="107"/>
+        <location filename="../service/main_dockwidget.ui" line="100"/>
         <source>Szukaj/filtruj mapy</source>
         <translation>Search/filter maps</translation>
     </message>
@@ -327,6 +380,11 @@
         <location filename="../service/main_dockwidget.ui" line="120"/>
         <source>Odśwież</source>
         <translation>Refresh</translation>
+    </message>
+    <message>
+    <location filename="../service/main_dockwidget.ui" line="165"/>
+        <source>Prześlij do Usemaps</source>
+        <translation>Upload to Usemaps</translation>
     </message>
 </context>
 <context>

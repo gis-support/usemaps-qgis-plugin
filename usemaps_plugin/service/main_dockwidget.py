@@ -33,13 +33,17 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.loginSettingsDialog = LoginSettingsDialog(self)
         self.importLayerDialog = ImportLayerDialog()
 
-        self.mapCanvas = iface.mapCanvas()
-        self.mapCanvas.setAcceptDrops(True)
+        for btn, path in ((b, p) for b, p in (
+            (self.connectButton, ":/plugins/usemaps-plugin/widget_disconnect.svg"),
+            (self.authSettingsButton, ":/plugins/usemaps-plugin/widget_settings.svg"),
+            (self.refreshButton, ":/plugins/usemaps-plugin/refresh.svg"),
+            (self.addLayerButton, ":/plugins/usemaps-plugin/export.svg")
+        )):
+            btn.setProperty("icon_path", path)
+            btn.setIcon(QIcon(btn.property("icon_path")))
 
-        self.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
         self.connectButton.setCheckable(True)
 
-        self.authSettingsButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_settings.svg"))
         self.authSettingsButton.clicked.connect(self.show_login_settings)
 
         self.layerBrowser.textChanged.connect(self.filter_tree_view)
@@ -67,7 +71,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.mapTableView.doubleClicked.connect(self.add_project_to_qgis)
         self._sort_state = {}
 
-        self.refreshButton.setIcon(QIcon(":/plugins/usemaps-plugin/refresh.svg"))
         self.refreshButton.clicked.connect(self.handle_refresh)
         self.refreshButton.setEnabled(False)
         self.tabWidget.setCurrentIndex(0)
@@ -81,7 +84,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.offers_projects_setup_tableview()
 
-        self.addLayerButton.setIcon(QIcon(":/plugins/usemaps-plugin/export.svg"))
         self.addLayerButton.clicked.connect(self.importLayerDialog.show)
         self.addLayerButton.setEnabled(False)
 
@@ -238,8 +240,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                     self.add_layer_to_map(index)
                     return True
 
-        if obj == self.tableProjects.viewport() and event.type() == QEvent.MouseButtonDblClick:
-            if event.button() == Qt.LeftButton:
+        if obj == self.tableProjects.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
+            if event.button() == Qt.MouseButton.LeftButton:
                 index = self.tableProjects.indexAt(event.pos())
                 if index.isValid():
                     self.offers_projects_load_layers(index)
@@ -300,13 +302,16 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                     layer.triggerRepaint()
 
     def handle_refresh(self) -> None:
-        """Odświeża zawartość aktywnej zakładki."""
-        current = self.tabWidget.currentIndex()
-        if current == self._PROJECTS_TAB_INDEX:
-            if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
-                self.offers_projects_fetch_config()
-        else:
-            self.refresh_layers()
+        """Odświeża warstwy dodane do QGIS oraz dane we wszystkich widocznych zakładkach."""
+        if not CONNECTION.is_connected:
+            return
+
+        layers_registry.loadData(True)
+
+        self.refresh_layers()
+
+        if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
+            self.offers_projects_fetch_config()
 
     # Mapy
 
@@ -466,22 +471,22 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.offers_projects_source_model = QStandardItemModel(0, 4, self)
         self.offers_projects_proxy_model = QSortFilterProxyModel(self)
         self.offers_projects_proxy_model.setSourceModel(self.offers_projects_source_model)
-        self.offers_projects_proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.offers_projects_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.offers_projects_proxy_model.setFilterKeyColumn(-1)
 
         self.tableProjects.setModel(self.offers_projects_proxy_model)
         self.tableProjects.setSortingEnabled(True)
-        self.tableProjects.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.tableProjects.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.tableProjects.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.tableProjects.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tableProjects.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tableProjects.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.tableProjects.horizontalHeader().setStretchLastSection(True)
         header = self.tableProjects.horizontalHeader()
         header.setVisible(False)
         header.setStretchLastSection(True)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
 
         header.sectionClicked.connect(self.offers_projects_handle_header_click)
         self.tableProjects.viewport().installEventFilter(self)
@@ -554,7 +559,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             m_id = p.get(self.project_settings.get('manager_attribute', 'kierownik'))
 
             id_item = QStandardItem()
-            id_item.setData(int(feature.get(self.project_id_field, 0)), Qt.DisplayRole)
+            id_item.setData(int(feature.get(self.project_id_field, 0)), Qt.ItemDataRole.DisplayRole)
 
             if m_id:
                 user_data = (CONNECTION.get(f'/api/users/{m_id}', sync=True) or {}).get('data', {})
@@ -571,8 +576,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             ])
 
         # Domyślne sortowanie po ID rosnąco
-        header.setSortIndicator(0, Qt.AscendingOrder)
-        self.offers_projects_proxy_model.sort(0, Qt.AscendingOrder)
+        header.setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+        self.offers_projects_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
         self._offers_projects_sort_state = {i: 0 for i in range(4)}
         self._offers_projects_sort_state[0] = 1
 
@@ -592,11 +597,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if next_state == 0:
             # Powrót do domyślnego sortowania po ID rosnąco
-            header.setSortIndicator(0, Qt.AscendingOrder)
-            self.offers_projects_proxy_model.sort(0, Qt.AscendingOrder)
+            header.setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+            self.offers_projects_proxy_model.sort(0, Qt.SortOrder.AscendingOrder)
             self._offers_projects_sort_state[0] = 1
         else:
-            order = Qt.AscendingOrder if next_state == 1 else Qt.DescendingOrder
+            order = Qt.SortOrder.AscendingOrder if next_state == 1 else Qt.DescendingOrder
             header.setSortIndicator(logical_index, order)
             self.offers_projects_proxy_model.sort(logical_index, order)
 
