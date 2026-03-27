@@ -505,6 +505,16 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def offers_projects_on_module_check(self, response: dict) -> None:
         data = (response or {}).get('data', {})
         if data.get('enabled') and data.get('configured'):
+            CONNECTION.get(
+                '/api/settings/oze_module_enabled',
+                callback=self.offers_projects_on_setting_check
+            )
+        else:
+            self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
+
+    def offers_projects_on_setting_check(self, response: dict) -> None:
+        enabled = (response or {}).get('data', False)
+        if enabled:
             self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, True)
             self.offers_projects_fetch_config()
         else:
