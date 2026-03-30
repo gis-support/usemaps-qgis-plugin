@@ -198,30 +198,25 @@ class FeatureLayer(QObject, Logger):
         else:
             self._reload_layer_metadata()
             fields_table = []
-            for field in self.fields:
+            for field in (f for v_name in self.valid_fields for f in self.fields if f['name'] == v_name):
 
-                if field['name'] not in self.valid_fields:
+                if field['name'] == self.datasource.geom_column_name:
                     continue
 
                 data_type = field.get('data_type')
-                if field['name'] == 'topogeom':
-                    continue
-                if field['name'] == self.datasource.geom_column_name:
-                    continue
                 if data_type.get('name', 'string') in ('decimal', 'float'):
                     fields_table.append('%s:real(20,%s)' % (
                         field['name'], field.get('decimal_places', 3)))
                 elif data_type.get('name') in ('text', 'hyperlink'):
                     fields_table.append('%s:%s(%s)' %
                                         (field['name'], 'string',
-                                         data_type.get("max_length", '-1') or '-1'))
+                                        data_type.get("max_length", '-1') or '-1'))
                 else:
                     fields_table.append('%s:%s' %
                                         (field['name'], field['data_type']['name']))
-            qgis_fields = 'field=%s' % '&field='.join(
-                fields_table)
-            layer = QgsVectorLayer('%s?crs=epsg:%s&%s' % (
-                self.geometry_type, self.srid, qgis_fields), toc_name, 'memory')
+
+            layer = QgsVectorLayer('%s?crs=epsg:%s&field=%s' % (
+                self.geometry_type, self.srid, '&field='.join(fields_table)), toc_name, 'memory')
             self.message(self.tr('Wczytywanie warstwy: {}...').format(toc_name), duration=5)
             # Warstwa tylko do odczytu
             if self.topo_layer or self.layer_scope == 'module' or not self.write_permission:
@@ -602,20 +597,15 @@ class FeatureLayer(QObject, Logger):
                 pass
             # Pusta lista atrybutów, do której będziemy dodawać kolejne wartości
             attributes = []
-            fields = self.datasource.attributes_schema['attributes']
-            for field in fields:
+            for field in (f for v_name in self.valid_fields for f in self.datasource.attributes_schema['attributes'] if f['name'] == v_name):
 
-                if field['name'] not in self.valid_fields:
+                if field['name'] == self.datasource.geom_column_name:
                     continue
 
-                field_name = field['name']
-                if field_name in ('topogeom', self.datasource.geom_column_name):
-                    continue
-                if field_name == self.datasource.id_column_name:
-                    value = feature['id']
+                if field['name'] == self.datasource.id_column_name:
+                    attributes.append(feature['id'])
                 else:
-                    value = feature['properties'].get(field_name)
-                attributes.append(value)
+                    attributes.append(feature['properties'].get(field['name']))
             f.setAttributes(attributes)
             addedFeatures.append(f)
             if hasattr(self, 'task'):
