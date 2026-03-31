@@ -1,7 +1,7 @@
 from typing import Optional, Any, Iterable
 
 from qgis.gui import (
-    QgsMapTool, QgsRubberBand, QgsMapCanvas, QgsMapMouseEvent,
+    QgsMapToolIdentify, QgsRubberBand, QgsMapCanvas, QgsMapMouseEvent,
     QgsCollapsibleGroupBox
 )
 from qgis.PyQt.QtWidgets import (
@@ -10,15 +10,14 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtCore import Qt, QDate, QDateTime
 from qgis.PyQt.QtGui import QCursor, QColor
 from qgis.core import (
-    QgsRectangle, QgsFeatureRequest, QgsMapLayer,
-    QgsCoordinateTransform, QgsProject, QgsGeometry,
-    QgsWkbTypes, NULL, QgsAttributeEditorElement, QgsFeature
+    QgsMapLayer, QgsWkbTypes, NULL,
+    QgsAttributeEditorElement, QgsFeature
 )
 
 from . import USER_CACHE
 from .connection import CONNECTION
 
-class UsemapsIdentifyTool(QgsMapTool):
+class UsemapsIdentifyTool(QgsMapToolIdentify):
     def __init__(self, canvas: QgsMapCanvas, dock_widget: QWidget) -> None:
         super().__init__(canvas)
         self.canvas = canvas
@@ -51,30 +50,14 @@ class UsemapsIdentifyTool(QgsMapTool):
         if not layer or layer.type() != QgsMapLayer.VectorLayer or e.button() != Qt.MouseButton.LeftButton or layer not in self.canvas.layers():
             return
 
-        search_geom = QgsGeometry.fromRect(
-            QgsCoordinateTransform(
-                self.canvas.mapSettings().destinationCrs(),
-                self.canvas.currentLayer().crs(),
-                QgsProject.instance()
-            ).transformBoundingBox(
-                QgsRectangle(
-                    self.toMapCoordinates(e.pos()).x() - (self.canvas.mapUnitsPerPixel() * 3),
-                    self.toMapCoordinates(e.pos()).y() - (self.canvas.mapUnitsPerPixel() * 3),
-                    self.toMapCoordinates(e.pos()).x() + (self.canvas.mapUnitsPerPixel() * 3),
-                    self.toMapCoordinates(e.pos()).y() + (self.canvas.mapUnitsPerPixel() * 3)
-                )
-            )
-        )
+        results = self.identify(e.x(), e.y(), [layer], self.TopDownStopAtFirst)
+
+        if not results:
+            layer.removeSelection()
 
         self._process_feature(
-            min(
-                (f for f in self.canvas.currentLayer().getFeatures(
-                    QgsFeatureRequest().setFilterRect(search_geom.boundingBox())
-                ) if f.geometry() and f.geometry().intersects(search_geom)),
-                key=lambda x: (x.geometry().type(), x.geometry().area()),
-                default=None
-            ),
-            self.canvas.currentLayer()
+            results[0].mFeature if results else None,
+            layer
         )
 
     def _extract_field_names(self, elements, valid_fields):
