@@ -549,6 +549,16 @@ class FeatureLayer(QObject, Logger):
         if not self.layers:
             self.log("Ostrzeżenie: Otrzymano dane, ale warstwa nie jest już zarejestrowana.")
             return
+
+        if hasattr(self, 'task') and self.task:
+            try:
+                status = self.task.status()
+                if status in (QgsTask.TaskStatus.Queued, QgsTask.TaskStatus.OnHold, QgsTask.TaskStatus.Running):
+                    self.task.cancel()
+            except RuntimeError:
+                pass
+            self.task = None
+
         self.task = QgsTask.fromFunction(
             self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
         QgsApplication.taskManager().addTask(self.task)
@@ -573,19 +583,26 @@ class FeatureLayer(QObject, Logger):
         except Exception as e:
             self.log(e)
             return
+
+        if task.isCanceled():
+            return
+
         for layer in self.layers:
-            # Czyścimy warstwę z obiektów (wymagane jeśli przeładowujemy istniejącą warstwę)
             layer.dataProvider().truncate()
-            # Dodanie obiektów do warstwy
+
+            if task.isCanceled():
+                return
+
             layer.dataProvider().addFeatures(features)
-            # Aktualizacja zasięgu warstwy
             layer.updateExtents(True)
+
         self.zoomToExtent(layer)
         self.features_loaded.emit(layer)
         layer.reload()
         layer.triggerRepaint()
-        # Usunięcie zbędnego taska
-        del self.task
+
+        if hasattr(self, 'task'):
+            del self.task
 
     def geojson2features(self, features: Iterable[dict]) -> List[QgsFeature]:
         """ Przekształcenie GeoJSONa na QgsFeature """
@@ -722,78 +739,66 @@ class FeatureLayer(QObject, Logger):
         if not datasource_name or not key_attr or not repr_attr:
             return None
 
-        cache_key = f'_helper_layer_{datasource_name}'
+        if f'_helper_layer_{datasource_name}' in DATA_SOURCE_REGISTRY:
+            try:
+                if DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].isValid() and DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].id() in QgsProject.instance().mapLayers():
+                    return DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}']
+            except RuntimeError:
+                pass
 
-        cached = DATA_SOURCE_REGISTRY.get(cache_key)
-        if cached is not None:
-            if QgsProject.instance().mapLayer(cached.id()):
-                return cached
-
-            del DATA_SOURCE_REGISTRY[cache_key]
-
-        values_list = (
-            RELATION_VALUES_MAPPING_REGISTRY
-            .get(datasource_name, {})
-            .get(key_attr, {})
-            .get(repr_attr, [])
+        list(
+            QgsProject.instance().removeMapLayer(layer.id())
+            for layer in QgsProject.instance().mapLayersByName(datasource_name)
+            if layer.providerType() == 'memory' and layer.geometryType() == QgsWkbTypes.NullGeometry
         )
-        if not values_list:
-            return None
 
         ds_meta = CONNECTION.get(f'/api/v2/datasources/{datasource_name}', sync=True)
         if not ds_meta or not ds_meta.get('data'):
             return None
 
-        ds_attrs = ds_meta['data']['attributes_schema']['attributes']
-
-        fields_parts = []
-        for attr in ds_attrs:
-            dt = attr.get('data_type', {}).get('name', 'text')
-            name = attr['name']
-            if dt == 'geometric' or name == 'geom':
-                continue
-            if dt in ('text', 'hyperlink'):
-                fields_parts.append(f'{name}:string')
-            elif dt in ('integer',):
-                fields_parts.append(f'{name}:integer')
-            elif dt in ('decimal', 'float'):
-                fields_parts.append(f'{name}:double')
-            else:
-                fields_parts.append(f'{name}:string')
-
-        fields_str = '&field='.join(fields_parts)
-        helper = QgsVectorLayer(f'NoGeometry?field={fields_str}', datasource_name, 'memory')
+        helper = QgsVectorLayer(
+            'NoGeometry?field=' + '&field='.join(
+                f"{attr['name']}:{'integer' if attr.get('data_type', {}).get('name') == 'integer' else 'double' if attr.get('data_type', {}).get('name') in ('decimal', 'float') else 'string(999999)'}"
+                for attr in ds_meta['data']['attributes_schema']['attributes']
+                if attr.get('data_type', {}).get('name') != 'geometric' and attr['name'] != 'geom'
+            ),
+            datasource_name,
+            'memory'
+        )
 
         if not helper.isValid():
             return None
+
+        # Wyłączenie komunikatu QGIS przy zapisie projektu
+        helper.setCustomProperty("skipMemoryLayersCheck", 1)
+        QgsProject.instance().addMapLayer(helper, False)
 
         features_resp = CONNECTION.post(
             f'/api/v2/datasources-features/read/{datasource_name}',
             payload={"data": {"filter_expression": {}}},
             sync=True
         )
-        if not features_resp or not features_resp.get('data'):
-            return None
 
-        layer_fields = helper.fields()
-        field_names = [layer_fields.field(i).name() for i in range(layer_fields.count())]
+        if features_resp and features_resp.get('data'):
 
-        features_to_add = []
-        for feat in features_resp['data'].get('features', []):
-            props = feat.get('properties', {})
-            props[ds_meta['data']['attributes_schema']['id_name']] = feat.get('id')
-            qf = QgsFeature(layer_fields)
-            attrs = []
-            for fname in field_names:
-                attrs.append(props.get(fname))
-            qf.setAttributes(attrs)
-            features_to_add.append(qf)
+            def create_feature(feat_dict, fields_ref=helper.fields(), id_name=ds_meta['data']['attributes_schema']['id_name']):
+                qf = QgsFeature(fields_ref)
+                qf.setAttributes([
+                    (json.dumps(val) if isinstance(val, (dict, list)) else val)
+                    for i in range(fields_ref.count())
+                    for val in ({**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}.get(fields_ref.field(i).name()),)
+                ])
+                return qf
 
-        helper.dataProvider().addFeatures(features_to_add)
+            helper.dataProvider().addFeatures(
+                list(create_feature(feat) for feat in features_resp['data'].get('features', []))
+            )
 
-        QgsProject.instance().addMapLayer(helper, False)
+            helper.updateExtents()
+            helper.dataChanged.emit()
+            helper.triggerRepaint()
 
-        DATA_SOURCE_REGISTRY[cache_key] = helper
+        DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'] = helper
         return helper
 
     def _setup_value_relation(self, layer: QgsVectorLayer, field_id: int, attribute: dict, helper_layer: QgsVectorLayer) -> None:
