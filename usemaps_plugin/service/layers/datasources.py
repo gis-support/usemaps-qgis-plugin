@@ -41,7 +41,6 @@ class Datasource(QObject, Logger):
         self.attributes_schema = data['attributes_schema']
         self.geom_column_name = self.attributes_schema.get('geometry_name')
         self.id_column_name = self.attributes_schema['id_name']
-        #self.module = data['module']
 
 
 class FeatureLayer(QObject, Logger):
@@ -706,7 +705,7 @@ class FeatureLayer(QObject, Logger):
                     parent_field = next(
                         (re.search(r'{{(.*?)}}', str(val)).group(1)
                          for k, val in json.loads(re.sub(r'({{[^}]+}})', r'"\1"', attribute.get('relation', {}).get('filter_expression', '{}'))).items()
-                         if 'EQUAL' in k and re.search(r'{{(.*?)}}', str(val))),
+                         if '$EQUAL' in k and re.search(r'{{(.*?)}}', str(val))),
                         None
                     )
                     if parent_field:
@@ -774,7 +773,7 @@ class FeatureLayer(QObject, Logger):
         QgsProject.instance().addMapLayer(helper, False)
 
         features_resp = CONNECTION.post(
-            f'/api/v2/datasources-features/read/{datasource_name}',
+            f'/api/v2/datasources-features/read/{datasource_name}?with_geometry=false',
             payload={"data": {"filter_expression": {}}},
             sync=True
         )
@@ -814,7 +813,7 @@ class FeatureLayer(QObject, Logger):
             equal_cond = next(
                 (v for k, v in json.loads(
                     re.sub(r'({{[^}]+}})', r'"\1"', filter_expr_str)
-                ).items() if 'EQUAL' in k),
+                ).items() if '$EQUAL' in k),
                 {}
             )
             for key, val in equal_cond.items():
