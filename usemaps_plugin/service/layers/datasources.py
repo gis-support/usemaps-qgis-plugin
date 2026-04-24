@@ -186,7 +186,7 @@ class FeatureLayer(QObject, Logger):
             self.valid_fields = self._validate_fields(
                 form_schema=self.form_schema)
 
-    def loadLayer(self, checked=False, group=None, toc_name=None):
+    def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Wczytywanie warstwy do QGIS """
 
         if not toc_name:
@@ -223,7 +223,7 @@ class FeatureLayer(QObject, Logger):
                 layer.setReadOnly(True)
         # Nadanie stylu - musi być przed set layer, ze wzgledu na to,
         # że nadanie stylu nadpisuje `customProperties` warstwy
-        self.setStyle(layer)
+        self.setStyle(layer, overridden_style_web=overridden_style_web)
         self.setLayer(layer)
         if group is None:
             QgsProject.instance().addMapLayer(layer)
@@ -245,9 +245,11 @@ class FeatureLayer(QObject, Logger):
         if indicators:
             iface.layerTreeView().removeIndicator(node, indicators[0])
 
-    def setStyle(self, layer: QgsVectorLayer) -> None:
+    def setStyle(self, layer: QgsVectorLayer, overridden_style_web: dict = None) -> None:
         """ Wczytanie stylu warstwy jeśli istnieje """
-        if self.style:
+        if overridden_style_web:
+            self.apply_usemaps_style(layer, overridden_style_web=overridden_style_web)
+        elif self.style:
             document = QDomDocument()
             document.setContent(self.style)
             layer.importNamedStyle(document)
@@ -314,10 +316,10 @@ class FeatureLayer(QObject, Logger):
 
         return symbol
 
-    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+    def apply_usemaps_style(self, layer: QgsVectorLayer, overridden_style_web: dict = None) -> None:
         """ Aplikuje styl i poprawnie ustawia poziomy skalowe """
         data = self.metadata.get('data', {})
-        style_web = data.get('style_web', {})
+        style_web = overridden_style_web if overridden_style_web else data.get('style_web', {})
         if not style_web:
             return
 
