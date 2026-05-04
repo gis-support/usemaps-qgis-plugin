@@ -449,7 +449,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                         item.get('visible', True) and any(child.isVisible() for child in sub_group.children())
                     )
                 else:
-                    l_id = item.get('id') or item.get('layer_id')
+                    l_id = item.get('id')
                     if not l_id or item.get('layer_type') == 'mvt':
                         continue
                     l_class = (layers_registry.layers.get(l_id) or
