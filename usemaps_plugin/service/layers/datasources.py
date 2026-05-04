@@ -196,6 +196,7 @@ class FeatureLayer(QObject, Logger):
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
             self.form_schema = self.metadata['data']['form_schema']
+            self.filter_expression = self.metadata['data'].get('filter_expression')
             self.valid_fields = self._validate_fields(
                 form_schema=self.form_schema)
 
@@ -552,7 +553,9 @@ class FeatureLayer(QObject, Logger):
                 f['name']
                 for f in self.datasource.attributes_schema.get('attributes', [])
                 if f['name'] != self.datasource.geom_column_name
-            ]}},
+            ],
+            "features_filter": self.filter_expression if self.filter_expression else {}
+            }},
             callback=self.on_gpkg.emit
         )
 
@@ -635,7 +638,9 @@ class FeatureLayer(QObject, Logger):
                 f['name']
                 for f in self.datasource.attributes_schema.get('attributes', [])
                 if f['name'] != self.datasource.geom_column_name
-            ]}},
+            ],
+            "features_filter": self.filter_expression if self.filter_expression else {}
+            }},
             callback=self.on_gpkg.emit
         )
 
