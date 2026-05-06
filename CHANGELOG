@@ -1,3 +1,11 @@
+1.2
+Support for Qt 6
+Upload QGIS layers to Usemaps added
+Usemaps Projects added
+Setting the symbology of a Usemaps layer when it loads
+Reloading Usemaps layers from QGIS project fixed
+Fixed attribute order in table
+
 1.1
 Add English as default language
 Add login with services like Active Directory, LDAP etc. on Usemap service with configured external login module

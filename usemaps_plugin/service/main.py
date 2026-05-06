@@ -8,6 +8,7 @@ from .layers.layers_registry import layers_registry
 from .layers.datasources import Datasource
 from .main_dockwidget import MainDockWidget
 from ..tools.project_variables import get_layer_mapping, migrate_layer_gisbox_id_variable, remove_layer_mapping
+from .gui.adaptive_palette import apply_adaptive_palette
 
 class ServiceProvider():
 
@@ -38,7 +39,8 @@ class ServiceProvider():
         if connected:
             # Połączono z serwerem
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/connected.png"))
-            self.dockwidget.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_disconnect.svg"))
+            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_connect.svg")
+            self.dockwidget.connectButton.setIcon(QIcon(self.dockwidget.connectButton.property("icon_path")))
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Wyloguj"))
             self.dockwidget.refreshButton.setEnabled(True)
 
@@ -51,13 +53,16 @@ class ServiceProvider():
             CONNECTION.disconnect()
 
             self.dockwidgetAction.setIcon(QIcon(":/plugins/usemaps-plugin/disconnected.png"))
-            self.dockwidget.connectButton.setIcon(QIcon(":/plugins/usemaps-plugin/widget_connect.svg"))
+            self.dockwidget.connectButton.setProperty("icon_path", ":/plugins/usemaps-plugin/widget_disconnect.svg")
+            self.dockwidget.connectButton.setIcon(QIcon(self.dockwidget.connectButton.property("icon_path")))
             self.dockwidget.connectButton.setText(QCoreApplication.translate("ServiceProvider", "Zaloguj"))
             self.dockwidget.refreshButton.setEnabled(False)
             self.dockwidget.connectButton.setChecked(False)
             self.dockwidget.offers_projects_reset()
             self.dockwidget.clear_treeview()
             self.dockwidget.projects_proxy_model.sourceModel().clear()
+
+        apply_adaptive_palette(self.dockwidget)
 
         self.toggle_system_layers_readonly_mode()
 
