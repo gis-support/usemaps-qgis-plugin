@@ -1,6 +1,5 @@
 # coding: utf-8
 import urllib
-import uuid
 
 from qgis.PyQt.QtCore import QObject, QUrl, pyqtSignal, QSettings, QCoreApplication
 from qgis.PyQt.QtNetwork import QNetworkRequest
@@ -18,75 +17,24 @@ class Connection(QObject, Logger):
 
     MANAGER = QgsNetworkAccessManager()
     MANAGER.setTransferTimeout(600000)
-    QUEUE = {}
 
     def __init__(self, parent=None):
-        super(Connection, self).__init__()
-        self.parent = parent
+        super(Connection, self).__init__(parent)
+        self._active_replies = set()
 
         self.token = None
-        self.host = None
         self.is_connected = False
-
         self.twoFaDialog = None
-
         self.current_user = None
-
-    @classmethod
-    def _exec_callback(cls, uuid_: str):
-        reply, callback = cls.QUEUE[uuid_]
-
-        try:
-            response_data = json.loads(bytearray(reply.readAll()))
-        except Exception as e:
-            cls.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
-            return
-
-        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
-
-        if status_code not in (200, 201, 204):
-            if status_code == 500:
-                error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data['error_code'])
-            else:
-                error_message = response_data['error_message']
-
-            cls.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
-            return
-
-        callback(response_data)
-        del cls.QUEUE[uuid_]
-
-    @classmethod
-    def _exec_binary_callback(cls, uuid_: str):
-        """Callback dla binarnych odpowiedzi """
-        reply, callback = cls.QUEUE[uuid_]
-
-        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
-
-        if status_code not in (200, 201):
-            cls.message(
-                QCoreApplication.translate("Connection", "Błąd pobierania pliku. Kod: {}").format(status_code),
-                level=Qgis.MessageLevel.Critical, duration=5)
-            del cls.QUEUE[uuid_]
-            return
-
-        data = bytes(reply.readAll())
-        callback(data)
-        del cls.QUEUE[uuid_]
-
-    @staticmethod
-    def generate_random_uuid():
-        return str(uuid.uuid4())
 
     def _getHost(self):
         settings = QSettings()
         settings.beginGroup('gisbox/gisbox_connection')
-        host = settings.value('host')
-
-        o = urllib.parse.urlsplit(host)
-        if not o.scheme:
-            host = "https://" + host
-
+        host = settings.value('host', '').strip()
+        
+        if host and not host.startswith(('http://', 'https://')):
+            return f"https://{host}"
+            
         return host
 
     def authenticate(self) -> bool:
@@ -95,33 +43,27 @@ class Connection(QObject, Logger):
         settings.beginGroup('gisbox/gisbox_connection')
 
         is_external = all(
-            self.get('/api/license_manager/modules/EXTERNAL_LOGIN', sync=True).get('data', {}).get(k)
+            (self.get('/api/license_manager/modules/EXTERNAL_LOGIN', sync=True, silent=True) or {}).get('data', {}).get(k)
             for k in ('configured', 'enabled')
         )
 
+        credentials = {
+            'username_or_email': settings.value('user'),
+            'password': settings.value('pass')
+        }
+
         if is_external:
             endpoint = '/api/external_login'
-            payload = {
-                'data': {
-                    'credentials': {
-                        'username_or_email': settings.value('user'),
-                        'password': settings.value('pass')
-                    }
-                }
-            }
+            payload = {'data': {'credentials': credentials}}
         else:
             endpoint = '/api/login'
-            payload = {
-                'data': {
-                    'username_or_email': settings.value('user'),
-                    'password': settings.value('pass')
-                }
-            }
+            payload = {'data': credentials}
 
         request = self._createRequest(endpoint, with_token=False)
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        
         if not response_raw:
             self.message(
                 self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
@@ -137,51 +79,48 @@ class Connection(QObject, Logger):
             if self.twoFaDialog is None:
                 self.twoFaDialog = TwoFADialog()
 
-            dialog = self.twoFaDialog.exec()
-            if dialog != 0:
-                return self.verify_code(self.twoFaDialog.verification_code)
-            else:
+            if self.twoFaDialog.exec() == 0:
                 return False
 
-        else:
-            self.token = response['token']
-            return True
+            return self.verify_code(self.twoFaDialog.verification_code)
+
+        self.token = response['token']
+        return True
 
     def connect(self) -> bool:
-        if self.authenticate():
-            self.log(self.tr("Połączono"))
-            self.on_connect.emit(True)
-            self.is_connected = True
-            self.get_current_user()
-            return True
-        self.on_disconnect.emit()
-        return False
+        if not self.authenticate():
+            self.on_disconnect.emit()
+            return False
+
+        self.log(self.tr("Połączono"))
+        self.on_connect.emit(True)
+        self.is_connected = True
+        self.get_current_user()
+        return True
 
     def get_current_user(self):
+        if self.current_user:
+            return
 
-        if not self.current_user:
+        response_data = self.get('/api/users/current_user', sync=True)
+        if not response_data or 'data' not in response_data:
+            return
 
-            request = self._createRequest('/api/users/current_user')
-            response = self.MANAGER.blockingGet(request, forceRefresh=True)
+        data = response_data['data']
+        permissions = data.get('permissions', {})
+        layers_dict = {l["layer_id"]: l for l in permissions.get('layers', [])}
+        modules_dict = {m["module_name"]: m for m in permissions.get('modules', [])}
 
-            response_data = json.loads(bytearray(response.content()))
-            data = response_data['data']
+        data['permissions']['layers'] = layers_dict
+        data['permissions']['modules'] = modules_dict
 
-            permissions = data['permissions']
-            layers_dict = {l["layer_id"]: l for l in permissions['layers']}
-            modules_dict = {m["module_name"]: m for m in permissions['modules']}
-
-            data['permissions']['layers'] = layers_dict
-            data['permissions']['modules'] = modules_dict
-
-            self.current_user = data
+        self.current_user = data
 
 
     def disconnect(self):
 
         if self.token:
             request = self._createRequest('/api/logout')
-            request.setRawHeader(b'X-Access-Token', bytes(self.token.encode()))
             self.MANAGER.blockingGet(request)
         self.log(self.tr("Rozłączono"))
         self.on_disconnect.emit()
@@ -202,59 +141,69 @@ class Connection(QObject, Logger):
 
         return request
 
-    def get(self, endpoint: str, sync: bool = False, callback: any = None):
-        request = self._createRequest(endpoint)
+    def _process_reply(self, reply, is_sync: bool, binary: bool, callback: any = None, silent: bool = False):
+        if is_sync:
+            content_bytes = bytearray(reply.content())
+        else:
+            content_bytes = bytearray(reply.readAll())
 
-        if sync:
-            reply = self.MANAGER.blockingGet(request)
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        
+        if not is_sync:
+            self._active_replies.discard(reply)
+            reply.deleteLater()
 
-            response = json.loads(bytearray(reply.content()))
-            return response
+        if status_code not in (200, 201, 204):
+            try:
+                response_data = json.loads(content_bytes)
+                if status_code == 500:
+                    error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data.get('error_code', 'Brak'))
+                else:
+                    error_message = response_data.get('error_message', 'Nieznany błąd')
+            except Exception:
+                error_message = QCoreApplication.translate("Connection", "Błąd HTTP: {}").format(status_code)
 
-        reply = self.MANAGER.get(request)
+            if not silent:
+                self.message(error_message, level=Qgis.MessageLevel.Critical, duration=5)
+            
+            if is_sync:
+                return None
+            return
+
+        if binary:
+            result = bytes(content_bytes)
+        else:
+            try:
+                result = json.loads(content_bytes)
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                self.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
+                result = None
 
         if callback:
-            random_uuid = self.generate_random_uuid()
-            self.QUEUE[random_uuid] = (reply, callback)
-            reply.finished.connect(lambda: self._exec_callback(random_uuid))
+            callback(result)
 
+        if is_sync:
+            return result
+
+    def _send_request(self, method: str, endpoint: str, data: bytes = b'', sync: bool = False, binary: bool = False, callback: any = None, silent: bool = False):
+        request = self._createRequest(endpoint)
+        is_get = method.upper() == 'GET'
+
+        if sync:
+            reply = self.MANAGER.blockingGet(request) if is_get else self.MANAGER.blockingPost(request, data)
+            return self._process_reply(reply, is_sync=True, binary=binary, callback=callback, silent=silent)
+
+        reply = self.MANAGER.get(request) if is_get else self.MANAGER.post(request, data)
+        self._active_replies.add(reply)
+        reply.finished.connect(lambda: self._process_reply(reply, is_sync=False, binary=binary, callback=callback, silent=silent))
         return reply
 
-    def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync:bool = False):
-        request = self._createRequest(endpoint)
-        if srid:
-            request.setRawHeader(b'X-Response-SRID', srid.encode())
+    def get(self, endpoint: str, sync: bool = False, callback: any = None, binary: bool = False, silent: bool = False):
+        return self._send_request(method='GET', endpoint=endpoint, sync=sync, binary=binary, callback=callback, silent=silent)
 
+    def post(self, endpoint: str, payload: dict, callback: any = None, sync: bool = False, binary: bool = False, silent: bool = False):
         data = json.dumps(payload).encode()
-
-        if sync:
-            reply = self.MANAGER.blockingPost(request, data)
-            response = json.loads(bytearray(reply.content()))
-
-            if callback:
-                callback(response)
-
-            return response
-
-        reply = self.MANAGER.post(request, data)
-        response = reply.readAll()
-
-        if callback:
-            random_uuid = self.generate_random_uuid()
-            self.QUEUE[random_uuid] = (reply, callback)
-            reply.finished.connect(lambda: self._exec_callback(random_uuid))
-
-        return response
-
-    def post_binary(self, endpoint: str, payload: dict, callback: any):
-        """Pobiera binarną odpowiedź przez POST"""
-        request = self._createRequest(endpoint, content_type='application/json')
-        data = json.dumps(payload).encode()
-        reply = self.MANAGER.post(request, data)
-
-        random_uuid = self.generate_random_uuid()
-        self.QUEUE[random_uuid] = (reply, callback)
-        reply.finished.connect(lambda: self._exec_binary_callback(random_uuid))
+        return self._send_request(method='POST', endpoint=endpoint, data=data, sync=sync, binary=binary, callback=callback, silent=silent)
 
     def verify_code(self, code: int):
         settings = QSettings()
@@ -270,6 +219,7 @@ class Connection(QObject, Logger):
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+        
         if not response_raw:
             self.message(
                 self.tr('Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem'),
@@ -280,9 +230,9 @@ class Connection(QObject, Logger):
             error_message = response.get('error_message')
             self.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
             return False
-        else:
-            self.token = response['token']
-            return True
+            
+        self.token = response['token']
+        return True
 
 
 CONNECTION = Connection()

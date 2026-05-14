@@ -336,7 +336,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
         users = {
-            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
+            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True, silent=True) or {}).get('data', {}).get('name', ''))
             for uid in {p.get('owner') for p in projects_data if p.get('owner')}
         }
 
@@ -572,7 +572,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             id_item.setData(int(feature.get(self.project_id_field, 0)), Qt.ItemDataRole.DisplayRole)
 
             if m_id:
-                user_data = (CONNECTION.get(f'/api/users/{m_id}', sync=True) or {}).get('data', {})
+                user_data = (CONNECTION.get(f'/api/users/{m_id}', sync=True, silent=True) or {}).get('data', {})
                 manager_name = user_data.get('name') or user_data.get('username') or str(m_id)
             else:
                 manager_name = ""

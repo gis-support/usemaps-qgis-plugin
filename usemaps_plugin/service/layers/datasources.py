@@ -546,7 +546,7 @@ class FeatureLayer(QObject, Logger):
     def getFeatures(self):
         """ Wysyłanie żądania o obiekty warstwy """
         self.time = time.time()
-        CONNECTION.post_binary(
+        CONNECTION.post(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
             payload={"data": {"attributes": [
@@ -556,7 +556,8 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_gpkg.emit
+            callback=self.on_gpkg.emit,
+            binary=True
         )
 
     def _build_relation_reverse_lookups(self) -> dict:
@@ -631,7 +632,7 @@ class FeatureLayer(QObject, Logger):
 
         self._reload_layer_metadata()
         self.time = time.time()
-        CONNECTION.post_binary(
+        CONNECTION.post(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
             payload={"data": {"attributes": [
@@ -641,7 +642,8 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_gpkg.emit
+            callback=self.on_gpkg.emit,
+            binary=True
         )
 
     def parseGpkgFeatures(self, task: QgsTask, gpkg_path: str, reverse_lookups: dict = None):
