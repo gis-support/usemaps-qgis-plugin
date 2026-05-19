@@ -47,7 +47,7 @@ class Datasource(QObject, Logger):
 class FeatureLayer(QObject, Logger):
     """ Bazowa klasa dla warstw wektorowych """
 
-    on_gpkg = pyqtSignal(object)  # bytes
+    on_features = pyqtSignal(object)  # bytes
     on_reload = pyqtSignal(bool)
     features_loaded = pyqtSignal(object)
 
@@ -178,7 +178,7 @@ class FeatureLayer(QObject, Logger):
 
     def connectSignals(self):
         """ Podłączanie sygnałów """
-        self.on_gpkg.connect(self.onGpkg)
+        self.on_features.connect(self.onFeatures)
         self.on_reload.connect(self.onReload)
         self.features_loaded.connect(self._on_features_loaded)
 
@@ -192,7 +192,10 @@ class FeatureLayer(QObject, Logger):
 
     def _reload_layer_metadata(self):
         self.datasource = self._get_datasource(self.datasource_name)
-        self.fields = self.datasource.attributes_schema['attributes']
+        self.fields = {
+            attr['name']: attr
+            for attr in self.datasource.attributes_schema['attributes']
+        }
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
             self.form_schema = self.metadata['data']['form_schema']
@@ -212,23 +215,23 @@ class FeatureLayer(QObject, Logger):
         else:
             self._reload_layer_metadata()
             fields_table = []
-            for field in (f for v_name in self.valid_fields for f in self.fields if f['name'] == v_name):
-                if field['name'] not in self.valid_fields:
+            for field_name in self.valid_fields:
+                field = self.fields.get(field_name)
+                if field is None:
                     continue
-
+                if field_name == self.datasource.geom_column_name:
+                    continue
                 data_type = field.get('data_type')
-                if field['name'] == self.datasource.geom_column_name:
-                    continue
                 if data_type.get('name', 'string') in ('decimal', 'float'):
                     fields_table.append('%s:real(20,%s)' % (
-                        field['name'], field.get('decimal_places', 3)))
+                        field_name, field.get('decimal_places', 3)))
                 elif data_type.get('name') in ('text', 'hyperlink'):
                     fields_table.append('%s:%s(%s)' %
-                                        (field['name'], 'string',
+                                        (field_name, 'string',
                                         data_type.get("max_length", '-1') or '-1'))
                 else:
                     fields_table.append('%s:%s' %
-                                        (field['name'], field['data_type']['name']))
+                                        (field_name, data_type['name']))
             qgis_fields = 'field=%s' % '&field='.join(
                 fields_table)
             layer = QgsVectorLayer('%s?crs=epsg:%s&%s' % (
@@ -556,7 +559,7 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_gpkg.emit
+            callback=self.on_features.emit
         )
 
     def _build_relation_reverse_lookups(self) -> dict:
@@ -564,9 +567,10 @@ class FeatureLayer(QObject, Logger):
         if not self.layers:
             return {}
 
+        layer = self.layers[0]
         lookups = {}
-        for i in range(self.layers[0].fields().count()):
-            setup = self.layers[0].editorWidgetSetup(i)
+        for i, field in enumerate(layer.fields()):
+            setup = layer.editorWidgetSetup(i)
 
             if setup.type() != 'ValueRelation':
                 continue
@@ -577,7 +581,7 @@ class FeatureLayer(QObject, Logger):
             if not helper or not config.get('Key', '') or not config.get('Value', ''):
                 continue
 
-            lookups[self.layers[0].fields().field(i).name()] = {
+            lookups[field.name()] = {
                 str(feat[config.get('Value')]): feat[config.get('Key')]
                 for feat in helper.getFeatures()
                 if feat[config.get('Value')] is not None
@@ -585,7 +589,7 @@ class FeatureLayer(QObject, Logger):
 
         return {k: v for k, v in lookups.items() if v}
 
-    def onGpkg(self, data: bytes):
+    def onFeatures(self, data: bytes):
         """ Odbiór binarnego GPKG, zapis do pliku tymczasowego """
         if not self.layers:
             return
@@ -641,7 +645,7 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_gpkg.emit
+            callback=self.on_features.emit
         )
 
     def parseGpkgFeatures(self, task: QgsTask, gpkg_path: str, reverse_lookups: dict = None):
@@ -654,13 +658,13 @@ class FeatureLayer(QObject, Logger):
 
             dest_fields = self.layers[0].fields()
             src_name_to_idx = {
-                gpkg_layer.fields().field(i).name(): i
-                for i in range(gpkg_layer.fields().count())
+                field.name(): i
+                for i, field in enumerate(gpkg_layer.fields())
             }
 
             mapping_instructions = tuple(
-                (src_name_to_idx.get(dest_fields.field(i).name()), dest_fields.field(i).name())
-                for i in range(dest_fields.count())
+                (src_name_to_idx.get(field.name()), field.name())
+                for field in dest_fields
             )
 
             features_to_add = []
@@ -806,10 +810,11 @@ class FeatureLayer(QObject, Logger):
         if not datasource_name or not key_attr or not repr_attr:
             return None
 
-        if f'_helper_layer_{datasource_name}' in DATA_SOURCE_REGISTRY:
+        registry_key = f'_helper_layer_{datasource_name}'
+        if (layer := DATA_SOURCE_REGISTRY.get(registry_key)) is not None:
             try:
-                if DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].isValid() and DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].id() in QgsProject.instance().mapLayers():
-                    return DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}']
+                if layer.isValid() and layer.id() in QgsProject.instance().mapLayers():
+                    return layer
             except RuntimeError:
                 pass
 
@@ -849,12 +854,12 @@ class FeatureLayer(QObject, Logger):
         if features_resp and features_resp.get('data'):
 
             def create_feature(feat_dict, fields_ref=helper.fields(), id_name=ds_meta['data']['attributes_schema']['id_name']):
+                props = {**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}
                 qf = QgsFeature(fields_ref)
                 qf.setAttributes([
-                    (json.dumps(val) if isinstance(val, (dict, list)) else val)
-                    for i in range(fields_ref.count())
-                    for val in ({**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}.get(fields_ref.field(i).name()),)
-                ])
+                    json.dumps(props.get(field.name())) if isinstance(props.get(field.name()), (dict, list)) else props.get(field.name())
+                    for field in fields_ref
+                ])  
                 return qf
 
             helper.dataProvider().addFeatures(
@@ -865,7 +870,7 @@ class FeatureLayer(QObject, Logger):
             helper.dataChanged.emit()
             helper.triggerRepaint()
 
-        DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'] = helper
+        DATA_SOURCE_REGISTRY[registry_key] = helper
         return helper
 
     def _setup_value_relation(self, layer: QgsVectorLayer, field_id: int, attribute: dict, helper_layer: QgsVectorLayer) -> None:
@@ -997,8 +1002,8 @@ class FeatureLayer(QObject, Logger):
             else:
                 attributes = feature.attributes()
                 names = feature.fields().names()
-                properties = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
-                              for i in range(len(names))}
+                properties = {name: self.sanetize_data_type(val) if val != NULL else None
+                              for name, val in zip(names, attributes)}
 
                 features_data.append(properties)
 
@@ -1046,8 +1051,8 @@ class FeatureLayer(QObject, Logger):
             else:
                 attributes = feature.attributes()
                 names = feature.fields().names()
-                properties = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
-                              for i in range(len(names))}
+                properties = {name: self.sanetize_data_type(val) if val != NULL else None
+                              for name, val in zip(names, attributes)}
 
                 features.append({
                     'properties': properties,
