@@ -214,6 +214,8 @@ class FeatureLayer(QObject, Logger):
                     fields_table.append('%s:%s(%s)' %
                                         (field['name'], 'string',
                                         data_type.get("max_length", '-1') or '-1'))
+                elif data_type.get('name', 'string') == 'integer':
+                    fields_table.append('%s:int8' % field['name'])
                 else:
                     fields_table.append('%s:%s' %
                                         (field['name'], field['data_type']['name']))
