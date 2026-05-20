@@ -264,25 +264,31 @@ class FeatureLayer(QObject, Logger):
                              if style_dict.get(k)), '#3388ff'))
 
         if geom_type == QgsWkbTypes.PolygonGeometry:
+            dash_array = style_dict.get('line-dash', [])
+            outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
+            outline_color.setAlphaF(float(style_dict.get('fill-outline-opacity', 1.0)))
+
             symbol = QgsFillSymbol.createSimple({
                 'color': color.name(),
-                'outline_color': style_dict.get('fill-outline-color', '#000000'),
+                'outline_color': outline_color.name(),
                 'outline_width': str(style_dict.get('line-width', 0.2) * 0.75),
-                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+                'outline_style': next(
+                    (style for condition, style in (
+                        (not dash_array, 'solid'),
+                        (dash_array == [1, 5], 'dot'),
+                        (dash_array == [10, 40], 'dash'),
+                        (dash_array == [10, 10], 'dash'),
+                        (dash_array == [10, 1, 10], 'dash dot')
+                    ) if condition),
+                    'solid'
+                )
             })
             symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
 
             symbol_layer = symbol.symbolLayer(0)
             if symbol_layer:
                 symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
-
-                outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
-                outline_color.setAlphaF(style_dict.get('fill-outline-opacity', 1.0))
                 symbol_layer.setStrokeColor(outline_color)
-
-                if style_dict.get('line-dash'):
-                    symbol_layer.setCustomDashVector(style_dict['line-dash'])
-                    symbol_layer.setUseCustomDashPattern(True)
 
         elif geom_type == QgsWkbTypes.LineGeometry:
             symbol = QgsLineSymbol.createSimple({
