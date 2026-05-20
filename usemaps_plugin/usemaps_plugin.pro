@@ -8,7 +8,8 @@ SOURCES = plugin.py \
           service/layers/layers_registry.py \
           tools/connection.py \
           tools/requests.py \
-          tools/capabilities.py
+          tools/capabilities.py \
+          tools/identify_tool.py
 
 FORMS = service/main_dockwidget.ui \
         service/gui/login_settings.ui \

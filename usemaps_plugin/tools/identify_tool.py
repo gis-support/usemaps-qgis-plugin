@@ -1,0 +1,175 @@
+from typing import Optional, Any, Iterable
+
+from qgis.gui import (
+    QgsMapToolIdentify, QgsRubberBand, QgsMapCanvas, QgsMapMouseEvent,
+    QgsCollapsibleGroupBox
+)
+from qgis.PyQt.QtWidgets import (
+    QWidget, QFormLayout, QLabel, QLineEdit, QVBoxLayout, QScrollArea
+)
+from qgis.PyQt.QtCore import Qt, QDate, QDateTime
+from qgis.PyQt.QtGui import QCursor, QColor
+from qgis.core import (
+    QgsMapLayer, QgsWkbTypes, NULL,
+    QgsAttributeEditorElement, QgsFeature
+)
+
+from . import USER_CACHE
+from .connection import CONNECTION
+
+class UsemapsIdentifyTool(QgsMapToolIdentify):
+    def __init__(self, canvas: QgsMapCanvas, dock_widget: QWidget) -> None:
+        super().__init__(canvas)
+        self.canvas = canvas
+        self.dock = dock_widget
+        self.identified_layer = None
+
+        self.geometry = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+        self.geometry.setColor(QColor('red'))
+        self.geometry.setFillColor(QColor(255, 165, 0, 100))
+        self.geometry.setWidth(3)
+        self.canvas.layersChanged.connect(self._verify_layer_visibility)
+
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+
+    def _resolve_user_name(self, user_id: Any) -> Any:
+        """Pobiera nazwę z globalnego cache lub dociąga z API i zapisuje."""
+        if user_id not in USER_CACHE:
+            USER_CACHE[user_id] = (CONNECTION.get(f'/api/users/{user_id}', sync=True) or {}).get('data', {}).get('name', user_id)
+        return USER_CACHE[user_id]
+
+    def _verify_layer_visibility(self) -> None:
+        """Czyści wyniki, jeśli zidentyfikowana warstwa przestała być widoczna lub została usunięta"""
+        if self.identified_layer and self.identified_layer not in self.canvas.layers():
+            self._process_feature(None, None)
+
+    def canvasReleaseEvent(self, e: QgsMapMouseEvent) -> None:
+        """Identyfikuje obiekt na podstawie kliknięcia z uwzględnieniem tolerancji"""
+        layer = self.canvas.currentLayer()
+
+        if not layer or layer.type() != QgsMapLayer.VectorLayer or e.button() != Qt.MouseButton.LeftButton or layer not in self.canvas.layers():
+            return
+
+        results = self.identify(e.x(), e.y(), [layer], self.TopDownStopAtFirst)
+
+        if not results:
+            layer.removeSelection()
+
+        self._process_feature(
+            results[0].mFeature if results else None,
+            layer
+        )
+
+    def _extract_field_names(self, elements, valid_fields):
+        """Generuje nazwy pól na podstawie elementów formularza warstwy"""
+        for el in elements:
+            if el.type() == QgsAttributeEditorElement.AeTypeField and el.name() in valid_fields:
+                yield el.name()
+            elif el.type() == QgsAttributeEditorElement.AeTypeContainer:
+                yield from self._extract_field_names(el.children(), valid_fields)
+
+    def _process_feature(self, feature: Optional[QgsFeature], layer: QgsMapLayer) -> None:
+        """Generuje listę atrybutów ze zwijanymi grupami"""
+        if not feature:
+            self.clear_highlight()  # Czyści obrys obiektu
+            self.dock.attributeTabWidget.clear()  # Czyści atrybuty w panelu bocznym
+            self.identified_layer = None
+            return
+
+        self.identified_layer = layer
+        self.geometry.reset(layer.geometryType())
+        self.geometry.addGeometry(feature.geometry(), layer)
+
+        self.dock.attributeTabWidget.clear()
+
+        self.dock.attributeTabWidget.addTab(
+            self._setup_scroll_area(
+                QScrollArea(),
+                self._populate_groups_layout(QWidget(), feature, layer)
+            ),
+            self.tr("Atrybuty")
+        )
+
+        self.dock.attributeTabWidget.tabBar().hide()
+
+        self.dock.tabWidget.setCurrentIndex(self.dock.tabWidget.indexOf(self.dock.identifyTab))
+
+    def _setup_scroll_area(self, scroll: QScrollArea, content: QWidget) -> QScrollArea:
+        """Konfiguruje obszar przewijania dla panelu atrybutów"""
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+        return scroll
+
+    def _populate_groups_layout(self, container: QWidget, feature: QgsFeature, layer: QgsMapLayer) -> QWidget:
+        """Wypełnia atrybutami, uwzględniając podział na zakładki z konfiguracji warstwy"""
+        QVBoxLayout(container)
+
+        if layer.editFormConfig().layout() == 1 and layer.editFormConfig().tabs():
+            for tab in layer.editFormConfig().tabs():
+                container.layout().addWidget(
+                    self._create_group_box(
+                        tab.name(),
+                        self._create_attribute_page(feature, self._extract_field_names(tab.children(), layer.fields().names()))
+                    )
+                )
+        else:
+            container.layout().addWidget(
+                self._create_attribute_page(feature, (f.name() for f in layer.fields()))
+            )
+
+        container.layout().addStretch()
+        return container
+
+    def _create_group_box(self, title: str, content: QWidget) -> QgsCollapsibleGroupBox:
+        """Tworzy zakładkę grupy dla atrybutów"""
+        return self._add_to_layout(QgsCollapsibleGroupBox(title), content)
+
+    def _add_to_layout(self, parent: QWidget, child: QWidget) -> QWidget:
+        QVBoxLayout(parent).addWidget(child)
+        return parent
+
+    def _create_attribute_page(self, feature: QgsFeature, field_names: Iterable[str]) -> QWidget:
+        """Buduje formularz w oparciu nazwy pól"""
+        page = QWidget()
+        QFormLayout(page)
+
+        for name, value in ((n, feature.attribute(n)) for n in field_names):
+            page.layout().addRow(
+                QLabel(f"<b>{name}:</b>"),
+                self._create_readonly_field(
+                    self._resolve_user_name(value)
+                    if name in ('create_user', 'update_user') and value not in (None, NULL, '')
+                    else value
+                )
+            )
+
+        return page
+
+    def _create_readonly_field(self, value: Any) -> QLineEdit:
+        """Formatuje pola"""
+        return self._apply_readonly_field_settings(
+            QLineEdit(
+                "NULL" if value == NULL or value is None
+                else value.toString("yyyy-MM-dd HH:mm:ss") if isinstance(value, QDateTime)
+                else value.toString("yyyy-MM-dd") if isinstance(value, QDate)
+                else str(value)
+            )
+        )
+
+    def _apply_readonly_field_settings(self, widget: QLineEdit) -> QLineEdit:
+        """Dostosowuje wymiary i właściwości pola tekstowego"""
+        widget.setReadOnly(True)
+        widget.setCursorPosition(0)
+
+        widget.setMinimumWidth(widget.fontMetrics().boundingRect(widget.text()).width() + 20)
+
+        return widget
+
+    def clear_highlight(self) -> None:
+        """Usuwa obrysy i podświetlenia z mapy"""
+        self.geometry.reset()
+
+    def deactivate(self) -> None:
+        """Dezaktywuje narzędzie i sprząta interfejs"""
+        self.clear_highlight()
+        super().deactivate()

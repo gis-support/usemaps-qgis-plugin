@@ -275,6 +275,24 @@
         <translation>Map imported: {}</translation>
     </message>
     <message>
+        <location filename="../service/main_dockwidget.py" line="50"/>
+        <source>Narzędzie identyfikacji. Włącz, a następnie kliknij obiekt na mapie, aby sprawdzić jego atrybuty.</source>
+        <translation>Identify tool. Enable it, then click a feature on the map to check its attributes.</translation>
+    </message>
+</context>
+<context>
+    <name>UsemapsIdentifyTool</name>
+    <message>
+        <location filename="../tools/identify_tool.py" line="138"/>
+        <source>Atrybuty</source>
+        <translation>Attributes</translation>
+    </message>
+    <message>
+        <location filename="../tools/identify_tool.py" line="144"/>
+        <source>Atrybuty</source>
+        <translation>Attributes</translation>
+    </message>
+    <message>
         <location filename="../service/main_dockwidget.py" line="150"/>
         <source>Tylko administrator może dodać nową warstwę do organizacji</source>
         <translation>Only an administrator can add a new layer to the organization</translation>
@@ -382,6 +400,14 @@
         <translation>Refresh</translation>
     </message>
     <message>
+        <location filename="../service/main_dockwidget.ui" line="87"/>
+        <source>Identyfikacja Usemaps</source>
+        <translation>Usemaps Identify</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="187"/>
+        <source>Identyfikacja</source>
+        <translation>Identify</translation>
     <location filename="../service/main_dockwidget.ui" line="165"/>
         <source>Prześlij do Usemaps</source>
         <translation>Upload to Usemaps</translation>
