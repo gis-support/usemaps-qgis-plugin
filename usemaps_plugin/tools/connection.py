@@ -73,34 +73,15 @@ class Connection(QObject, Logger):
 
     def authenticate(self) -> bool:
         """ Logowanie za pomocą REST API """
+        request = self._createRequest('/api/login', with_token=False)
         settings = QSettings()
         settings.beginGroup('gisbox/gisbox_connection')
-
-        is_external = all(
-            self.get('/api/license_manager/modules/EXTERNAL_LOGIN', sync=True).get('data', {}).get(k)
-            for k in ('configured', 'enabled')
-        )
-
-        if is_external:
-            endpoint = '/api/external_login'
-            payload = {
-                'data': {
-                    'credentials': {
-                        'username_or_email': settings.value('user'),
-                        'password': settings.value('pass')
-                    }
-                }
+        payload = {
+            'data': {
+                'username_or_email': settings.value('user'),
+                'password': settings.value('pass')
             }
-        else:
-            endpoint = '/api/login'
-            payload = {
-                'data': {
-                    'username_or_email': settings.value('user'),
-                    'password': settings.value('pass')
-                }
-            }
-
-        request = self._createRequest(endpoint, with_token=False)
+        }
         reply = self.MANAGER.blockingPost(request, json.dumps(payload).encode('utf-8'))
         response_raw = bytearray(reply.content())
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
@@ -172,9 +153,9 @@ class Connection(QObject, Logger):
         self.current_user = None
         return True
 
-    def _createRequest(self, 
-                       endpoint: str, 
-                       content_type: str = 'application/json', 
+    def _createRequest(self,
+                       endpoint: str,
+                       content_type: str = 'application/json',
                        with_token: bool = True) -> QNetworkRequest:
         request = QNetworkRequest(QUrl(urllib.parse.urljoin(self._getHost(), endpoint)))
         request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, content_type)
