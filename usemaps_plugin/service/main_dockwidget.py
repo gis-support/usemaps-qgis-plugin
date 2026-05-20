@@ -456,7 +456,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                                layers_registry.layers.get(str(l_id)) or
                                layers_registry.layers.get(int(l_id) if str(l_id).isdigit() else None))
                     if l_class:
-                        if (node := l_class.loadLayer(group=parent_group)):
+                        map_layer_style = item.get('style')
+                        if (node := l_class.loadLayer(group=parent_group, overridden_style_web=map_layer_style)):
                             node.setItemVisibilityChecked(item.get('visible', True))
                     else:
                         self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
