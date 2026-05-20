@@ -3,7 +3,7 @@ import os
 from qgis.PyQt import uic
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.PyQt.QtCore import Qt, QCoreApplication
-from PyQt5.QtNetwork import QHttpMultiPart, QHttpPart, QNetworkRequest, QNetworkReply
+from qgis.PyQt.QtNetwork import QHttpMultiPart, QHttpPart, QNetworkRequest, QNetworkReply
 from qgis.utils import iface
 from qgis.core import QgsMapLayerProxyModel, QgsJsonExporter
 
@@ -18,8 +18,8 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
     def __init__(self):
         super(ImportLayerDialog, self).__init__(parent=iface.mainWindow())
         self.setupUi(self)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        self.layer_combobox.setFilters(QgsMapLayerProxyModel.VectorLayer)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.layer_combobox.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
 
         self.cancel_button.clicked.connect(self.hide)
         self.add_button.clicked.connect(self.upload_to_usemaps)
@@ -36,10 +36,10 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
         self.add_button.setEnabled(False)
         self.add_button.setText(self.tr("Wysyłanie..."))
 
-        multi_part = QHttpMultiPart(QHttpMultiPart.FormDataType)
+        multi_part = QHttpMultiPart(QHttpMultiPart.ContentType.FormDataType)
 
         geojson_part = QHttpPart()
-        geojson_part.setHeader(QNetworkRequest.ContentDispositionHeader,
+        geojson_part.setHeader(QNetworkRequest.KnownHeaders.ContentDispositionHeader,
                                'form-data; name="geojson"; filename="layer.geojson"')
         geojson_part.setBody(QgsJsonExporter(layer).exportFeatures(layer.getFeatures()).encode('utf-8'))
         multi_part.append(geojson_part)
@@ -51,12 +51,12 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
             "permissions": "[]" # Brak dostępu
         }.items():
             part = QHttpPart()
-            part.setHeader(QNetworkRequest.ContentDispositionHeader, f'form-data; name="{name}"')
+            part.setHeader(QNetworkRequest.KnownHeaders.ContentDispositionHeader, f'form-data; name="{name}"')
             part.setBody(value.encode('utf-8'))
             multi_part.append(part)
 
         request = CONNECTION._createRequest("/api/v2/datasources-upload/geojson", with_token=True)
-        request.setHeader(QNetworkRequest.ContentTypeHeader, None)
+        request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, None)
 
         reply = CONNECTION.MANAGER.post(request, multi_part)
         multi_part.setParent(reply)
@@ -64,7 +64,7 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
         while not reply.isFinished():
             QCoreApplication.processEvents()
 
-        if reply.error() == QNetworkReply.NoError:
+        if reply.error() == QNetworkReply.NetworkError.NoError:
             QMessageBox.information(self, self.tr("Sukces"), self.tr("Warstwa została dodana do Usemaps."))
             self.hide()
         else:
