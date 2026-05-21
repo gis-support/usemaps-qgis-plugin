@@ -9,7 +9,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsRuleBasedLabeling)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -596,6 +596,25 @@ class FeatureLayer(QObject, Logger):
 
             if task.isCanceled():
                 return
+
+            layer.dataProvider().deleteAttributes(
+                list(
+                    layer.fields().indexFromName(f.name())
+                    for f in layer.fields()
+                    if f.name() not in self.valid_fields
+                    if f.name() != self.datasource.geom_column_name
+                )
+            )
+
+            layer.dataProvider().addAttributes(
+                list(
+                    QgsField(name, QVariant.String)
+                    for name in self.valid_fields
+                    if layer.fields().indexFromName(name) == -1
+                )
+            )
+
+            layer.updateFields()
 
             layer.dataProvider().addFeatures(features)
             layer.updateExtents(True)
