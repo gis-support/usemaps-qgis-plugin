@@ -203,7 +203,7 @@ class FeatureLayer(QObject, Logger):
             self.valid_fields = self._validate_fields(
                 form_schema=self.form_schema)
 
-    def loadLayer(self, checked=False, group=None, toc_name=None):
+    def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Wczytywanie warstwy do QGIS """
 
         if not toc_name:
@@ -229,6 +229,8 @@ class FeatureLayer(QObject, Logger):
                     fields_table.append('%s:%s(%s)' %
                                         (field_name, 'string',
                                         data_type.get("max_length", '-1') or '-1'))
+                elif data_type.get('name', 'string') == 'integer':
+                    fields_table.append('%s:int8' % field['name'])
                 else:
                     fields_table.append('%s:%s' %
                                         (field_name, data_type['name']))
@@ -242,7 +244,7 @@ class FeatureLayer(QObject, Logger):
                 layer.setReadOnly(True)
         # Nadanie stylu - musi być przed set layer, ze wzgledu na to,
         # że nadanie stylu nadpisuje `customProperties` warstwy
-        self.setStyle(layer)
+        self.setStyle(layer, overridden_style_web=overridden_style_web)
         self.setLayer(layer)
         if group is None:
             QgsProject.instance().addMapLayer(layer)
@@ -264,9 +266,11 @@ class FeatureLayer(QObject, Logger):
         if indicators:
             iface.layerTreeView().removeIndicator(node, indicators[0])
 
-    def setStyle(self, layer: QgsVectorLayer) -> None:
+    def setStyle(self, layer: QgsVectorLayer, overridden_style_web: dict = None) -> None:
         """ Wczytanie stylu warstwy jeśli istnieje """
-        if self.style:
+        if overridden_style_web:
+            self.apply_usemaps_style(layer, overridden_style_web=overridden_style_web)
+        elif self.style:
             document = QDomDocument()
             document.setContent(self.style)
             layer.importNamedStyle(document)
@@ -280,25 +284,31 @@ class FeatureLayer(QObject, Logger):
                              if style_dict.get(k)), '#3388ff'))
 
         if geom_type == QgsWkbTypes.PolygonGeometry:
+            dash_array = style_dict.get('line-dash', [])
+            outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
+            outline_color.setAlphaF(float(style_dict.get('fill-outline-opacity', 1.0)))
+
             symbol = QgsFillSymbol.createSimple({
                 'color': color.name(),
-                'outline_color': style_dict.get('fill-outline-color', '#000000'),
+                'outline_color': outline_color.name(),
                 'outline_width': str(style_dict.get('line-width', 0.2) * 0.75),
-                'line_style': 'solid' if not style_dict.get('line-dash') else 'dash'
+                'outline_style': next(
+                    (style for condition, style in (
+                        (not dash_array, 'solid'),
+                        (dash_array == [1, 5], 'dot'),
+                        (dash_array == [10, 40], 'dash'),
+                        (dash_array == [10, 10], 'dash'),
+                        (dash_array == [10, 1, 10], 'dash dot')
+                    ) if condition),
+                    'solid'
+                )
             })
             symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
 
             symbol_layer = symbol.symbolLayer(0)
             if symbol_layer:
                 symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
-
-                outline_color = QColor(style_dict.get('fill-outline-color', '#000000'))
-                outline_color.setAlphaF(style_dict.get('fill-outline-opacity', 1.0))
                 symbol_layer.setStrokeColor(outline_color)
-
-                if style_dict.get('line-dash'):
-                    symbol_layer.setCustomDashVector(style_dict['line-dash'])
-                    symbol_layer.setUseCustomDashPattern(True)
 
         elif geom_type == QgsWkbTypes.LineGeometry:
             symbol = QgsLineSymbol.createSimple({
@@ -333,10 +343,10 @@ class FeatureLayer(QObject, Logger):
 
         return symbol
 
-    def apply_usemaps_style(self, layer: QgsVectorLayer) -> None:
+    def apply_usemaps_style(self, layer: QgsVectorLayer, overridden_style_web: dict = None) -> None:
         """ Aplikuje styl i poprawnie ustawia poziomy skalowe """
         data = self.metadata.get('data', {})
-        style_web = data.get('style_web', {})
+        style_web = overridden_style_web if overridden_style_web else data.get('style_web', {})
         if not style_web:
             return
 
@@ -859,7 +869,7 @@ class FeatureLayer(QObject, Logger):
                 qf.setAttributes([
                     json.dumps(props.get(field.name())) if isinstance(props.get(field.name()), (dict, list)) else props.get(field.name())
                     for field in fields_ref
-                ])  
+                ])
                 return qf
 
             helper.dataProvider().addFeatures(

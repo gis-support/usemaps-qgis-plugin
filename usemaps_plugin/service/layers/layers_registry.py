@@ -106,12 +106,13 @@ class LayersRegistry(QObject, Logger):
         if layer is None:
             # Brak warstw
             return False
-        if layer.customProperty('gisbox/is_gisbox_layer'):
-            return bool(layer.customProperty('gisbox/is_gisbox_layer'))
-        layer_gisbox_id = get_layer_mapping(layer.id())
-        if layer_gisbox_id == -1:
+
+        try:
+            if layer.customProperty('gisbox/is_gisbox_layer'):
+                return bool(layer.customProperty('gisbox/is_gisbox_layer'))
+            return get_layer_mapping(layer.id()) != -1
+        except RuntimeError:
             return False
-        return True
 
     def getLayerClass(self, layer=None):
         """ Zwraca klasę danej warstwy """
