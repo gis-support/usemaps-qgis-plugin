@@ -153,8 +153,8 @@ class FeatureLayer(QObject, Logger):
     def checkLayer(self, state):
         try:
             self.parent.setChecked(state)
-        except:
-            pass
+        except Exception as e:
+            self.log(e)
 
     def zoomToExtent(self, layer):
         """ Przybiżenie do warstwy z innym układem współrzędnych """
@@ -841,8 +841,8 @@ class FeatureLayer(QObject, Logger):
                 else:
                     filter_expression = f'"{child_col}" = current_value(\'{parent_field}\')'
                 break
-        except Exception:
-            pass
+        except Exception as e:
+            self.log(e)
 
         config = {
             'Layer': helper_layer.id(),
