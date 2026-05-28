@@ -302,16 +302,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
 
-        def fetch_all_projects():
-            default_res = CONNECTION.get('/api/v2/projects-default', sync=True) or {}
-            if 'data' in default_res:
-                yield default_res['data']
-
-            projects_res = CONNECTION.get('/api/v2/projects', sync=True) or {}
-            if 'data' in projects_res:
-                yield from projects_res['data']
-
-        self.load_projects_to_tableview(list(fetch_all_projects()))
+        res = CONNECTION.get('/api/v2/projects?with_default=true', sync=True)
+        if isinstance(res, dict) and 'data' in res:
+            self.load_projects_to_tableview(res['data'])
 
         mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
@@ -447,10 +440,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not project_info:
             return
 
-        if project_info.get('role') == 'default':
-            res = CONNECTION.get("/api/v2/projects-default", sync=True)
-        else:
-            res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
+        res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
 
         if not res or 'data' not in res:
             self.message(self.tr("Błąd pobierania danych mapy"), level=Qgis.Warning)
