@@ -109,3 +109,8 @@ class ServiceProvider():
                         layer_class.setLayer(layer, from_project=True)
 
         self.dockwidget.refresh_layers()
+
+    def unload(self):
+        if self.dockwidget:
+            self.parent.iface.removeDockWidget(self.dockwidget)
+            self.dockwidget.deleteLater()
