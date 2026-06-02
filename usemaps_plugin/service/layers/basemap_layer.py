@@ -114,8 +114,10 @@ class BaseMapLayer(BaseLayer):
             return 'image/jpeg'
         return formats[0]
 
-    def loadLayer(self, checked=False, group=None):
+    def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Załadowanie mapy """
+        if not toc_name:
+            toc_name = self.name
         if self.layers:
             layer = self.layers[0].clone()
         else:
@@ -126,15 +128,15 @@ class BaseMapLayer(BaseLayer):
                     url = self.wmsUrl()
                 else:
                     url = self.url
-                layer = QgsRasterLayer(url, self.name, 'wms')
-            except (MissingSchema, ConnectionError) as e:
-                self.message(self.tr("Błąd warstwy {}: błąd połączenia z serwerem.").format(self.name), level=Qgis.MessageLevel.Critical)
+                layer = QgsRasterLayer(url, toc_name, 'wms')
+            except (MissingSchema, ConnectionError):
+                self.message(self.tr("Błąd warstwy {}: błąd połączenia z serwerem.").format(toc_name), level=Qgis.MessageLevel.Critical)
                 return
             except CapabilitiesConnectionException as e:
-                self.message(self.tr("Błąd warstwy {}: błąd połączenia z serwerem (kod: {}). Upewnij się, że połączenie sieciowe i usługa działają poprawnie").format(self.name, e.code), level=Qgis.MessageLevel.Critical)
+                self.message(self.tr("Błąd warstwy {}: błąd połączenia z serwerem (kod: {}). Upewnij się, że połączenie sieciowe i usługa działają poprawnie").format(toc_name, e.code), level=Qgis.MessageLevel.Critical)
                 return
-            except KeyError as e:
-                self.message(self.tr("Błąd warstwy {}: nazwa {} nie występuje w Capabilities.").format(self.name, self.service_layers_names), level=Qgis.MessageLevel.Critical)
+            except KeyError:
+                self.message(self.tr("Błąd warstwy {}: nazwa {} nie występuje w Capabilities.").format(toc_name, self.service_layers_names), level=Qgis.MessageLevel.Critical)
                 return
 
         self.setLayer(layer)
