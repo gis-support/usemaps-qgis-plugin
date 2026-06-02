@@ -114,7 +114,7 @@ class BaseMapLayer(BaseLayer):
             return 'image/jpeg'
         return formats[0]
 
-    def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
+    def loadLayer(self, group=None, toc_name=None, *args, **kwargs):
         """ Załadowanie mapy """
         if not toc_name:
             toc_name = self.name
