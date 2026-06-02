@@ -10,7 +10,7 @@
 name=Usemaps
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
-version=1.2
+version=1.3
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
@@ -26,12 +26,10 @@ tracker=https://github.com/gis-support/usemaps-qgis-plugin/issues
 repository=https://github.com/gis-support/usemaps-qgis-plugin
 # End of mandatory metadata
 
-changelog=Support for Qt 6
-    Upload QGIS layers to Usemaps added
-    Usemaps Projects added
-    Setting the symbology of a Usemaps layer when it loads
-    Reloading Usemaps layers from QGIS project fixed
-    Fixed attribute order in table
+changelog=Support for Usemaps hierarchical dictionaries
+    New Usemaps Identification map tool
+    Symbology fixes
+    Support for 64-bit integer data type
 
 # Tags are comma separated with spaces allowed
 tags=python
