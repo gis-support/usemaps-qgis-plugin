@@ -215,6 +215,75 @@
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="databoxTab">
+       <attribute name="title">
+        <string>Data.Box</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_databox">
+        <item>
+         <widget class="QGroupBox" name="groupBoxDownload">
+          <layout class="QVBoxLayout" name="verticalLayoutDownload">
+           <item>
+            <layout class="QVBoxLayout" name="layoutSelectArea"/>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDownloadData">
+             <property name="text">
+              <string>Pobierz</string>
+             </property>
+             <property name="toolTip">
+              <string>Pobiera dane wektorowe z wybranej warstwy Data.Box dla wskazanego obszaru i wczytuje je do QGIS z gotową symbolizacją.</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="databoxBrowser">
+          <property name="placeholderText">
+           <string>Szukaj/filtruj warstwy Data.Box</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableView" name="databoxTableView">
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SingleSelection</enum>
+          </property>
+          <property name="showGrid">
+           <bool>false</bool>
+          </property>
+          <property name="sortingEnabled">
+           <bool>true</bool>
+          </property>
+          <attribute name="horizontalHeaderStretchLastSection">
+           <bool>true</bool>
+          </attribute>
+          <attribute name="verticalHeaderVisible">
+           <bool>false</bool>
+          </attribute>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_databox_actions">
+          <item>
+           <widget class="QPushButton" name="btnLoadDataboxMvt">
+            <property name="text">
+             <string>Wczytaj do QGIS</string>
+            </property>
+            <property name="toolTip">
+             <string>Wczytuje wybraną warstwę Data.Box jako kafelki wektorowe (MVT).</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </item>
     <item>

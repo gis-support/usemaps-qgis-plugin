@@ -1,13 +1,17 @@
 import os
 from typing import Optional
 
+import json
 from qgis.PyQt import QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal, QEvent, Qt, QSortFilterProxyModel
 from qgis.PyQt.QtGui import QIcon, QDropEvent, QDragEnterEvent, QStandardItemModel, QStandardItem
+from qgis.core import (QgsProject, Qgis, QgsMapLayer, QgsVectorLayer,
+                        QgsGeometry, QgsWkbTypes, QgsPalLayerSettings,
+                        QgsRuleBasedRenderer, QgsSingleSymbolRenderer, QgsSymbol,
+                        QgsVectorLayerSimpleLabeling, QgsRuleBasedLabeling)
 
 from qgis.utils import iface
-from qgis.core import QgsProject, Qgis, QgsMapLayer
-
+from .layers.mvt_layer import MVTLayer, FALLBACK_COLOR
 from .layers.layers_registry import layers_registry
 from ..tools.logger import Logger
 from .gui.login_settings import LoginSettingsDialog
@@ -16,6 +20,7 @@ from ..tools.connection import CONNECTION
 from ..tools.project_variables import get_layer_mappings
 from .gui.adaptive_palette import apply_adaptive_palette
 from ..tools.identify_tool import UsemapsIdentifyTool
+from ..tools.gs_select_area import GsSelectArea
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -35,6 +40,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.loginSettingsDialog = LoginSettingsDialog(self)
         self.importLayerDialog = ImportLayerDialog()
         self.identify_tool = UsemapsIdentifyTool(self.mapCanvas, self)
+        self.select_area_widget = None
 
         for btn, path in ((b, p) for b, p in (
             (self.connectButton, ":/plugins/usemaps-plugin/widget_disconnect.svg"),
@@ -68,6 +74,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
         layers_registry.on_schema.connect(self.offers_projects_check_module)
+        layers_registry.on_schema.connect(self.databox_check_module)
 
         self.mapBrowser.textChanged.connect(self.filter_projects_view)
 
@@ -86,28 +93,44 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self._offers_projects_sort_state = {}
         self._PROJECTS_TAB_INDEX = 2
+        self._DATABOX_TAB_INDEX = 4
         self.project_settings = None
         self.project_datasource_name = None
         self.project_id_field = None
         self.project_name_field = None
 
         self.offers_projects_setup_tableview()
+        self.databox_setup_tableview()
 
         self.addLayerButton.clicked.connect(self.importLayerDialog.show)
         self.addLayerButton.setEnabled(False)
 
         self.mapCanvas.installEventFilter(self)
-        self.mapCanvas.mapToolSet.connect(lambda tool: self.btnIdentify.setChecked(tool == self.identify_tool))
+        self.mapCanvas.mapToolSet.connect(self._on_map_tool_set)
 
         apply_adaptive_palette(self)
 
         iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
         self.hide()
 
+    def _on_map_tool_set(self, tool):
+        try:
+            self.btnIdentify.setChecked(tool == self.identify_tool)
+        except RuntimeError:
+            pass
+
     def closeEvent(self, event):
+        self.mapCanvas.removeEventFilter(self)
+        try:
+            self.mapCanvas.mapToolSet.disconnect(self._on_map_tool_set)
+        except (TypeError, RuntimeError):
+            pass
         self.identify_tool.clear_highlight()
+        if self.select_area_widget:
+            self.select_area_widget.closeWidget()
         self.closingPlugin.emit()
-        event.accept()
+        if event:
+            event.accept()
 
 
 
@@ -152,6 +175,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             self.layerTreeView.setModel(None)
 
         self.addLayerButton.setEnabled(False)
+        self.offers_projects_reset()
+        self.databox_reset()
 
     def add_layers_to_treeview(self, groups: list):
         """
@@ -331,6 +356,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
             self.offers_projects_fetch_config()
+
+        if self.tabWidget.isTabVisible(self._DATABOX_TAB_INDEX):
+            self.databox_fetch_layers()
 
     # Mapy
 
@@ -699,6 +727,258 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.project_datasource_name = None
         self.project_id_field = None
         self.project_name_field = None
+
+    # Data.Box
+
+    def databox_setup_tableview(self) -> None:
+        self.databox_source_model = QStandardItemModel(0, 1, self)
+        self.databox_proxy_model = QSortFilterProxyModel(self)
+        self.databox_proxy_model.setSourceModel(self.databox_source_model)
+        self.databox_proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.databox_proxy_model.setFilterKeyColumn(0)
+
+        self.databoxTableView.setModel(self.databox_proxy_model)
+        self.databoxTableView.setSortingEnabled(True)
+        self.databoxTableView.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.databoxTableView.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.databoxTableView.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.databoxTableView.horizontalHeader().setVisible(False)
+        self.databoxTableView.horizontalHeader().setStretchLastSection(True)
+
+        self.databoxTableView.viewport().installEventFilter(self)
+        self.databoxBrowser.textChanged.connect(self.databox_proxy_model.setFilterFixedString)
+
+        self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, False)
+
+        self.btnLoadDataboxMvt.clicked.connect(self.databox_load_selected_mvt)
+
+        # Inicjalizacja narzędzia do wskazywania obszaru
+        self.select_area_widget = GsSelectArea(self)
+        self.layoutSelectArea.addWidget(self.select_area_widget)
+        self.btnDownloadData.clicked.connect(self.databox_download_data)
+
+        self.download_geometry_geojson = None
+        self.select_area_widget.geometryCreated.connect(self.on_download_geometry_created)
+
+    def on_download_geometry_created(self, geom: QgsGeometry):
+        if geom and not geom.isNull():
+            self.download_geometry_geojson = json.loads(geom.asJson())
+            self.download_geometry_geojson["crs"] = {
+                "type": "name",
+                "properties": {
+                    "name": QgsProject.instance().crs().authid()
+                }
+            }
+        else:
+            self.download_geometry_geojson = None
+
+    def databox_check_module(self) -> None:
+        if not CONNECTION.is_connected:
+            return
+        CONNECTION.get(
+            '/api/license_manager/modules/DATABOX_DATA_MODULE',
+            callback=self.databox_on_module_check
+        )
+
+    def databox_on_module_check(self, response: dict) -> None:
+        data = (response or {}).get('data', {})
+        is_enabled = data.get('enabled', False)
+        self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, is_enabled)
+        if is_enabled:
+            self.databox_fetch_layers()
+
+    def databox_fetch_layers(self) -> None:
+        if not CONNECTION.is_connected:
+            return
+        CONNECTION.get(
+            '/api/databox/layers/metadata?tag=qgis',
+            callback=self.databox_on_layers_fetched
+        )
+
+    def databox_on_layers_fetched(self, response: dict) -> None:
+        if not response or 'data' not in response:
+            self.log("Błąd pobierania metadanych Data.Box")
+            return
+
+        self.databox_source_model.removeRows(0, self.databox_source_model.rowCount())
+        for layer_data in response['data']:
+            layer_name = layer_data.get('name')
+            layer_title = layer_data.get('title') or layer_name
+
+            item = QStandardItem(layer_title)
+            item.setData(layer_data, Qt.ItemDataRole.UserRole + 1)
+            self.databox_source_model.appendRow([item])
+
+    def _get_selected_layer_data(self) -> Optional[dict]:
+        index = self.databoxTableView.currentIndex()
+        if not index.isValid():
+            return
+        source_index = self.databox_proxy_model.mapToSource(index)
+        item = self.databox_source_model.itemFromIndex(source_index)
+        return item.data(Qt.ItemDataRole.UserRole + 1)
+
+    def databox_load_selected_mvt(self) -> None:
+        layer_data = self._get_selected_layer_data()
+        if not layer_data:
+            return
+        mvt = MVTLayer(layer_data, parent=self)
+        mvt.loadLayer()
+        self.mapCanvas.setMapTool(None)
+
+    def databox_download_data(self) -> None:
+        layer_data = self._get_selected_layer_data()
+        if not layer_data:
+            self.message(
+                self.tr("Wybierz warstwę z tabeli do pobrania."),
+                level=Qgis.MessageLevel.Warning,
+                duration=3
+            )
+            return
+
+        if not self.download_geometry_geojson:
+            self.message(
+                self.tr("Nie wskazano obszaru na mapie."),
+                level=Qgis.MessageLevel.Warning,
+                duration=3
+            )
+            return
+
+        self.mapCanvas.setMapTool(None)
+
+        payload = {
+            "data": {
+                "geojson": self.download_geometry_geojson,
+                "databox_layers": [layer_data.get('name')]
+            }
+        }
+
+        self.message(self.tr("Rozpoczynam pobieranie obszaru..."), duration=3)
+        self.btnDownloadData.setEnabled(False)
+        self.current_download_layer_data = layer_data
+        CONNECTION.post(
+            '/api/databox/download_data_v2?background=false',
+            payload=payload,
+            callback=self.databox_on_data_downloaded
+        )
+
+    def databox_on_data_downloaded(self, response: dict) -> None:
+        self.btnDownloadData.setEnabled(True)
+        if not response or 'data' not in response:
+            self.message(
+                self.tr("Błąd podczas pobierania danych."),
+                level=Qgis.MessageLevel.Critical,
+                duration=3
+            )
+            return
+
+        features_data = response['data']
+        if isinstance(features_data, dict) and features_data.get("type") == "FeatureCollection":
+            collections = {"pobrane_dane": features_data}
+        else:
+            collections = features_data
+
+        layer_data = self.current_download_layer_data
+
+        for collection_name, collection in collections.items():
+            if not collection.get("features"):
+                self.message(
+                    self.tr(f"Brak obiektów na wybranym obszarze dla warstwy {collection_name}."),
+                    level=Qgis.MessageLevel.Info,
+                    duration=3
+                )
+                continue
+
+            display_title = layer_data.get('title') or collection_name
+            temp_layer = QgsVectorLayer(json.dumps(collection), "temp", "ogr")
+            if not temp_layer.isValid():
+                self.message(
+                    self.tr(f"Nie udało się utworzyć warstwy z pobranych danych dla {collection_name}."),
+                    level=Qgis.MessageLevel.Critical,
+                    duration=3
+                )
+                continue
+
+            uri = f"{QgsWkbTypes.displayString(temp_layer.wkbType())}?crs={temp_layer.crs().authid()}"
+            memory_layer = QgsVectorLayer(uri, display_title, "memory")
+            provider = memory_layer.dataProvider()
+            provider.addAttributes(temp_layer.fields())
+            memory_layer.updateFields()
+            provider.addFeatures(list(temp_layer.getFeatures()))
+            memory_layer.updateExtents()
+
+            self._apply_vector_symbology(memory_layer, layer_data)
+            QgsProject.instance().addMapLayer(memory_layer)
+            self.message(self.tr(f"Pomyślnie wczytano obiekty dla {collection_name}."), duration=3)
+
+    def _apply_vector_symbology(self, vlayer: QgsMapLayer, layer_data: dict) -> None:
+        style_data = layer_data.get('style', {})
+        if not style_data:
+            return
+
+        uniques = style_data.get('uniques', {})
+        fallback_style = {
+            'fill-color': FALLBACK_COLOR,
+            'fill-outline-color': '#000000',
+            'fill-opacity': 0.7
+        }
+
+        if uniques and uniques.get('values'):
+            prop = uniques.get('property', '')
+            symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
+            renderer = QgsRuleBasedRenderer(symbol)
+            root_rule = renderer.rootRule()
+            while root_rule.children():
+                root_rule.removeChild(root_rule.children()[0])
+
+            labeling_root = QgsRuleBasedLabeling.Rule(QgsPalLayerSettings())
+            while labeling_root.children():
+                labeling_root.removeChild(labeling_root.children()[0])
+            has_labels = False
+
+            for key, value in uniques['values'].items():
+                is_null = MVTLayer.is_null_key(key)
+                if is_null:
+                    continue
+                filter_expr = f'"{prop}" = \'{key}\''
+                rule_label = str(key)
+
+                rule = QgsRuleBasedRenderer.Rule(MVTLayer.create_symbol(value))
+                rule.setFilterExpression(filter_expr)
+                rule.setLabel(rule_label)
+                root_rule.appendChild(rule)
+
+                if value.get('labels'):
+                    has_labels = True
+                    ls = MVTLayer.create_labeling_style(value['labels'])
+                    settings = ls.labelSettings()
+                    l_rule = QgsRuleBasedLabeling.Rule(settings)
+                    l_rule.setFilterExpression(filter_expr)
+                    if settings.scaleVisibility:
+                        l_rule.setMinimumScale(settings.minimumScale)
+                        l_rule.setMaximumScale(settings.maximumScale)
+                    labeling_root.appendChild(l_rule)
+
+            else_rule = QgsRuleBasedRenderer.Rule(MVTLayer.create_symbol(fallback_style))
+            else_rule.setIsElse(True)
+            else_rule.setLabel("Pozostałe")
+            root_rule.appendChild(else_rule)
+
+            vlayer.setRenderer(renderer)
+            if has_labels:
+                vlayer.setLabeling(QgsRuleBasedLabeling(labeling_root))
+                vlayer.setLabelsEnabled(True)
+
+        else:
+            vlayer.setRenderer(QgsSingleSymbolRenderer(MVTLayer.create_symbol(style_data)))
+
+            if style_data.get('labels'):
+                ls = MVTLayer.create_labeling_style(style_data['labels'])
+                vlayer.setLabeling(QgsVectorLayerSimpleLabeling(ls.labelSettings()))
+                vlayer.setLabelsEnabled(True)
+
+    def databox_reset(self) -> None:
+        self.databox_source_model.removeRows(0, self.databox_source_model.rowCount())
+        self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, False)
 
     # Identyfikacja
 
