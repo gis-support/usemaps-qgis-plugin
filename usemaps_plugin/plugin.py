@@ -23,7 +23,6 @@ class UsemapsPlugin:
         self.service = None
         self.menu = self.tr(u'&Wtyczka Usemaps')
         self.toolbar = self.iface.addToolBar(PLUGIN_NAME)
-        self.toolbar.addSeparator
 
     def install_translation(self):
         locale = QSettings().value('locale/userLocale')[0:2]

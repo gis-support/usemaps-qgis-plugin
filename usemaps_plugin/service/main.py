@@ -15,7 +15,6 @@ class ServiceProvider():
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self.parent.toolbar.addSeparator()
         self.dockwidget = MainDockWidget()
 
         self.dockwidgetAction = self.parent.add_dockwidget_action(
