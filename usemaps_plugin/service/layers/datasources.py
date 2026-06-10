@@ -950,9 +950,77 @@ class FeatureLayer(QObject, Logger):
     def getFeaturesDbIds(self, qgis_ids: list, layer: QgsVectorLayer) -> list:
         return [f[self.datasource.id_column_name] for f in layer.dataProvider().getFeatures( QgsFeatureRequest().setFilterFids( qgis_ids ))]
 
+    def _get_dict_fields(self, layer: QgsVectorLayer) -> dict:
+        """Pobiera i mapuje słownikowe pola z dozwolonymi wartościami"""
+        dict_fields = {}
+        for attr in self.datasource.attributes_schema.get('attributes', []):
+            if attr.get('type') != 'dict':
+                continue
+
+            allowed_values = attr.get('allowed_values')
+            if not allowed_values:
+                continue
+
+            field_idx = layer.fields().indexFromName(attr['name'])
+            if field_idx == -1:
+                continue
+
+            dict_fields[field_idx] = {
+                'name': layer.attributeDisplayName(field_idx),
+                'allowed': set(allowed_values)
+            }
+        return dict_fields
+
+    def _check_invalid_dict_value(self, field_idx: int, value: Any, dict_fields: dict, invalid_entries: set) -> None:
+        """Weryfikuje pojedynczą wartość i dodaje błąd jeśli jest nieprawidłowa"""
+        if field_idx not in dict_fields:
+            return
+
+        if value in (None, NULL, ''):
+            return
+
+        if value in dict_fields[field_idx]['allowed']:
+            return
+
+        field_name = dict_fields[field_idx]['name']
+        invalid_entries.add(f"'{value}' w polu '{field_name}'")
+
+    def _validate_dictionary_values(self, layer: QgsVectorLayer, edit_buffer) -> bool:
+        """Zwraca True jeśli wszystkie wartości słownikowe są poprawne"""
+        dict_fields = self._get_dict_fields(layer)
+        if not dict_fields:
+            return True
+
+        invalid_entries = set()
+
+        for changes in edit_buffer.changedAttributeValues().values():
+            for field_idx, value in changes.items():
+                self._check_invalid_dict_value(field_idx, value, dict_fields, invalid_entries)
+
+        for feature in edit_buffer.addedFeatures().values():
+            for field_idx, value in enumerate(feature.attributes()):
+                self._check_invalid_dict_value(field_idx, value, dict_fields, invalid_entries)
+
+        if not invalid_entries:
+            return True
+
+        entries_str = ", ".join(invalid_entries)
+        msg = self.tr(
+            'Nie udało się zapisać zmian. Wprowadzona wartość {} '
+            'nie pasuje do listy dozwolonych wartości słownika. '
+            'Wybierz poprawną pozycję z listy i spróbuj ponownie.'
+        ).format(entries_str)
+
+        self.message(msg, level=Qgis.MessageLevel.Critical, duration=10)
+        self.on_reload.emit(True)
+        return False
+
     def manageFeatures(self):
         layer = self.sender()
         edit_buffer = layer.editBuffer()
+
+        if not self._validate_dictionary_values(layer, edit_buffer):
+            return
 
         payload = {'data_source_name': self.datasource_name, 'layer_id': self.id}
 
