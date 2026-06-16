@@ -5,7 +5,7 @@ from qgis.core import (
     QgsVectorTileBasicRendererStyle, QgsVectorTileBasicLabeling,
     QgsVectorTileBasicLabelingStyle,
     QgsWkbTypes, QgsFillSymbol, QgsUnitTypes,
-    QgsPalLayerSettings, QgsTextFormat, Qgis
+    QgsPalLayerSettings, QgsTextFormat, Qgis, QgsDataSourceUri
 )
 from qgis.PyQt.QtCore import QObject
 from qgis.PyQt.QtGui import QColor
@@ -86,7 +86,6 @@ class MVTLayer(QObject, Logger):
             if fields_list:
                 settings.fieldName = fields_list[0]
 
-        maxzoom = labels_cfg.get('maxzoom')
 
         mvt_minzoom = 13
         label_style.setMinZoomLevel(mvt_minzoom)
@@ -94,13 +93,6 @@ class MVTLayer(QObject, Logger):
         if scale_min > 0:
             settings.scaleVisibility = True
             settings.minimumScale = scale_min
-
-        if maxzoom is not None:
-            label_style.setMaxZoomLevel(maxzoom)
-            scale_max = RASTER_ZOOM_LEVEL.get(maxzoom, 0)
-            if scale_max > 0:
-                settings.scaleVisibility = True
-                settings.maximumScale = scale_max
 
         label_style.setLabelSettings(settings)
         return label_style
@@ -126,28 +118,32 @@ class MVTLayer(QObject, Logger):
 
         host = CONNECTION._getHost().rstrip('/')
         token = CONNECTION.token
-        mvt_url = f"{host}/api/databox/mvt/{layer_name}/{{z}}/{{x}}/{{y}}?token={token}"
-        mvt_url = mvt_url.replace('=', '%3D').replace('&', '%26')
+        mvt_url = f"{host}/api/databox/mvt/{layer_name}/{{z}}/{{x}}/{{y}}"
 
         style_data = self.layer_data.get('style', {})
-        zmax = min(style_data.get('maxzoom', 14), 14)
-        uri = f"type=xyz&url={mvt_url}&zmax={zmax}&zmin=0"
+        zmax = min(style_data.get('maxzoom', 13), 13)
 
-        layer = QgsVectorTileLayer(uri, title)
+        uri = QgsDataSourceUri()
+        uri.setParam('type', 'xyz')
+        uri.setParam('url', mvt_url)
+        uri.setParam('zmin', '0')
+        uri.setParam('zmax', str(zmax))
+        uri.setParam('http-header:X-User-Agent', 'qgis_gs')
+        if token:
+            uri.setParam('http-header:X-Access-Token', token)
+
+        layer = QgsVectorTileLayer(bytes(uri.encodedUri()).decode(), title)
         if not layer.isValid():
             self.message(self.tr("Nie udało się wczytać warstwy MVT: {}.").format(title), level=Qgis.Warning)
             return
 
         minzoom = style_data.get('minzoom')
-        maxzoom = style_data.get('maxzoom')
         mvt_minzoom = max(0, minzoom - 1) if minzoom is not None else None
 
-        if any(z is not None for z in (minzoom, maxzoom)):
+        if minzoom is not None:
             layer.setScaleBasedVisibility(True)
             if mvt_minzoom is not None:
                 layer.setMinimumScale(RASTER_ZOOM_LEVEL.get(mvt_minzoom, 0))
-            if maxzoom is not None:
-                layer.setMaximumScale(RASTER_ZOOM_LEVEL.get(maxzoom, 0))
 
         styles = []
         label_styles = []
