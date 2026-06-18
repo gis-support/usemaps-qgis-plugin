@@ -11,7 +11,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsRuleBasedLabeling)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -666,14 +666,29 @@ class FeatureLayer(QObject, Logger):
             if not gpkg_layer.isValid() or task.isCanceled():
                 return
 
+            for layer in self.layers:
+                layer.dataProvider().deleteAttributes(
+                    list(
+                        layer.fields().indexFromName(f.name())
+                        for f in layer.fields()
+                        if f.name() not in self.valid_fields and f.name() != self.datasource.geom_column_name
+                    )
+                )
+
+                layer.dataProvider().addAttributes(
+                    list(
+                        QgsField(name, QVariant.String)
+                        for name in self.valid_fields
+                        if layer.fields().indexFromName(name) == -1
+                    )
+                )
+                layer.updateFields()
+
             dest_fields = self.layers[0].fields()
-            src_name_to_idx = {
-                field.name(): i
-                for i, field in enumerate(gpkg_layer.fields())
-            }
+            gpkg_fields = gpkg_layer.fields()
 
             mapping_instructions = tuple(
-                (src_name_to_idx.get(field.name()), field.name())
+                (gpkg_fields.indexFromName(field.name()), field.name())
                 for field in dest_fields
             )
 
@@ -690,7 +705,7 @@ class FeatureLayer(QObject, Logger):
                 src_attrs = src_feat.attributes()
 
                 dest_feat.setAttributes([
-                    NULL if inst[0] is None else (
+                    NULL if inst[0] == -1 else (
                         src_attrs[inst[0]] if src_attrs[inst[0]] in (None, NULL) or inst[1] not in reverse_lookups
                         else reverse_lookups[inst[1]].get(str(src_attrs[inst[0]]), src_attrs[inst[0]])
                     )
