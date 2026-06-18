@@ -56,6 +56,24 @@ class Connection(QObject, Logger):
         callback(response_data)
         del cls.QUEUE[uuid_]
 
+    @classmethod
+    def _exec_binary_callback(cls, uuid_: str):
+        """Callback dla binarnych odpowiedzi """
+        reply, callback = cls.QUEUE[uuid_]
+
+        status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+
+        if status_code not in (200, 201):
+            cls.message(
+                QCoreApplication.translate("Connection", "Błąd pobierania pliku. Kod: {}").format(status_code),
+                level=Qgis.MessageLevel.Critical, duration=5)
+            del cls.QUEUE[uuid_]
+            return
+
+        data = bytes(reply.readAll())
+        callback(data)
+        del cls.QUEUE[uuid_]
+
     @staticmethod
     def generate_random_uuid():
         return str(uuid.uuid4())
@@ -208,6 +226,16 @@ class Connection(QObject, Logger):
             reply.finished.connect(lambda: self._exec_callback(random_uuid))
 
         return response
+
+    def post_binary(self, endpoint: str, payload: dict, callback: any):
+        """Pobiera binarną odpowiedź przez POST"""
+        request = self._createRequest(endpoint, content_type='application/json')
+        data = json.dumps(payload).encode()
+        reply = self.MANAGER.post(request, data)
+
+        random_uuid = self.generate_random_uuid()
+        self.QUEUE[random_uuid] = (reply, callback)
+        reply.finished.connect(lambda: self._exec_binary_callback(random_uuid))
 
     def verify_code(self, code: int):
         settings = QSettings()

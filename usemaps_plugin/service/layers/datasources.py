@@ -1,4 +1,6 @@
 import time
+import os
+import tempfile
 from datetime import datetime
 import json
 import re
@@ -18,7 +20,6 @@ from qgis.PyQt.QtGui import QColor
 from . import DATA_SOURCE_REGISTRY, RELATION_VALUES_MAPPING_REGISTRY
 
 from ...tools.logger import Logger
-from .geojson import geojson2geom
 from ...tools.connection import CONNECTION
 from ...tools.project_variables import save_layer_mapping
 
@@ -46,7 +47,7 @@ class Datasource(QObject, Logger):
 class FeatureLayer(QObject, Logger):
     """ Bazowa klasa dla warstw wektorowych """
 
-    on_features = pyqtSignal(dict)
+    on_features = pyqtSignal(object)  # bytes
     on_reload = pyqtSignal(bool)
     features_loaded = pyqtSignal(object)
 
@@ -75,7 +76,7 @@ class FeatureLayer(QObject, Logger):
         self.valid_fields = []
         self.filter_expression = data.get("filter_expression")
 
-        self._clear_dependencies = {}  # Śledzi zależności: {pole_nadrzędne: set(pola_zależne)}
+        self._clear_dependencies = {}
 
         self.connectSignals()
 
@@ -179,13 +180,26 @@ class FeatureLayer(QObject, Logger):
         """ Podłączanie sygnałów """
         self.on_features.connect(self.onFeatures)
         self.on_reload.connect(self.onReload)
+        self.features_loaded.connect(self._on_features_loaded)
+
+    def _on_features_loaded(self, layer: QgsVectorLayer) -> None:
+        """Wyświetla komunikat po zakończeniu wczytywania obiektów warstwy"""
+        self.message(
+            self.tr('Wczytano warstwę: {}').format(layer.name()),
+            level=Qgis.MessageLevel.Success,
+            duration=5,
+        )
 
     def _reload_layer_metadata(self):
         self.datasource = self._get_datasource(self.datasource_name)
-        self.fields = self.datasource.attributes_schema['attributes']
+        self.fields = {
+            attr['name']: attr
+            for attr in self.datasource.attributes_schema['attributes']
+        }
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
             self.form_schema = self.metadata['data']['form_schema']
+            self.filter_expression = self.metadata['data'].get('filter_expression')
             self.valid_fields = self._validate_fields(
                 form_schema=self.form_schema)
 
@@ -201,27 +215,29 @@ class FeatureLayer(QObject, Logger):
         else:
             self._reload_layer_metadata()
             fields_table = []
-            for field in (f for v_name in self.valid_fields for f in self.fields if f['name'] == v_name):
-
-                if field['name'] == self.datasource.geom_column_name:
+            for field_name in self.valid_fields:
+                field = self.fields.get(field_name)
+                if field is None:
                     continue
-
+                if field_name == self.datasource.geom_column_name:
+                    continue
                 data_type = field.get('data_type')
                 if data_type.get('name', 'string') in ('decimal', 'float'):
                     fields_table.append('%s:real(20,%s)' % (
-                        field['name'], field.get('decimal_places', 3)))
+                        field_name, field.get('decimal_places', 3)))
                 elif data_type.get('name') in ('text', 'hyperlink'):
                     fields_table.append('%s:%s(%s)' %
-                                        (field['name'], 'string',
+                                        (field_name, 'string',
                                         data_type.get("max_length", '-1') or '-1'))
                 elif data_type.get('name', 'string') == 'integer':
                     fields_table.append('%s:int8' % field['name'])
                 else:
                     fields_table.append('%s:%s' %
-                                        (field['name'], field['data_type']['name']))
-
-            layer = QgsVectorLayer('%s?crs=epsg:%s&field=%s' % (
-                self.geometry_type, self.srid, '&field='.join(fields_table)), toc_name, 'memory')
+                                        (field_name, data_type['name']))
+            qgis_fields = 'field=%s' % '&field='.join(
+                fields_table)
+            layer = QgsVectorLayer('%s?crs=epsg:%s&%s' % (
+                self.geometry_type, self.srid, qgis_fields), toc_name, 'memory')
             self.message(self.tr('Wczytywanie warstwy: {}...').format(toc_name), duration=5)
             # Warstwa tylko do odczytu
             if self.topo_layer or self.layer_scope == 'module' or not self.write_permission:
@@ -541,109 +557,175 @@ class FeatureLayer(QObject, Logger):
             layer.setLabelsEnabled(False)
 
     def getFeatures(self):
-        """ Wysłanie żądania o obiekty warstwy """
+        """ Wysyłanie żądania o obiekty warstwy """
         self.time = time.time()
-        CONNECTION.post(
-            f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
+        CONNECTION.post_binary(
+            f'/api/v2/datasources-download/{self.datasource_name}'
+            f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
+            payload={"data": {"attributes": [
+                f['name']
+                for f in self.datasource.attributes_schema.get('attributes', [])
+                if f['name'] != self.datasource.geom_column_name
+            ],
+            "features_filter": self.filter_expression if self.filter_expression else {}
+            }},
+            callback=self.on_features.emit
+        )
 
-    def onFeatures(self, data: dict):
-        """ Sparsowanie i dodanie otrzymanych obiektów w sposób nieblokujący QGIS
-        https://new.opengis.ch/2018/06/22/threads-in-pyqgis3/ """
-        # Wymagane jest zapamiętanie zadania jako atrybut klasy
+    def _build_relation_reverse_lookups(self) -> dict:
+        """Buduje odwrócone mapowania dla pól Value Relation"""
         if not self.layers:
-            self.log("Ostrzeżenie: Otrzymano dane, ale warstwa nie jest już zarejestrowana.")
+            return {}
+
+        layer = self.layers[0]
+        lookups = {}
+        for i, field in enumerate(layer.fields()):
+            setup = layer.editorWidgetSetup(i)
+
+            if setup.type() != 'ValueRelation':
+                continue
+
+            config = setup.config()
+            helper = QgsProject.instance().mapLayer(config.get('Layer', ''))
+
+            if not helper or not config.get('Key', '') or not config.get('Value', ''):
+                continue
+
+            lookups[field.name()] = {
+                str(feat[config.get('Value')]): feat[config.get('Key')]
+                for feat in helper.getFeatures()
+                if feat[config.get('Value')] is not None
+            }
+
+        return {k: v for k, v in lookups.items() if v}
+
+    def onFeatures(self, data: bytes):
+        """ Odbiór binarnego GPKG, zapis do pliku tymczasowego """
+        if not self.layers:
             return
 
-        if hasattr(self, 'task') and self.task:
+        if getattr(self, 'task', None):
             try:
-                status = self.task.status()
-                if status in (QgsTask.TaskStatus.Queued, QgsTask.TaskStatus.OnHold, QgsTask.TaskStatus.Running):
+                if self.task.status() in (
+                    QgsTask.TaskStatus.Queued,
+                    QgsTask.TaskStatus.OnHold,
+                    QgsTask.TaskStatus.Running,
+                ):
                     self.task.cancel()
             except RuntimeError:
                 pass
             self.task = None
 
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.gpkg')
+        try:
+            os.write(tmp_fd, data)
+        finally:
+            os.close(tmp_fd)
+
+        self.message(
+            self.tr('Pobrano dane warstwy: {}, czas: {:.5f}s').format(
+                self.layers[0].name(), time.time() - self.time
+            ),
+            level=Qgis.MessageLevel.Success,
+            duration=5,
+        )
+
         self.task = QgsTask.fromFunction(
-            self.tr('Ładowanie obiektów'), self.parseFeatures, data=data['data'])
+            self.tr('Wczytywanie obiektów'),
+            self.parseGpkgFeatures,
+            gpkg_path=tmp_path,
+            reverse_lookups=self._build_relation_reverse_lookups(),
+        )
         QgsApplication.taskManager().addTask(self.task)
 
-        layer_name = self.layers[0].name() if self.layers else self.name
-        self.message(
-            self.tr('Pomyślnie wczytano dane warstwy: {}, czas: {}').format(
-                layer_name, time.time() - self.time),
-            level=Qgis.MessageLevel.Success, duration=5)
-
-    def onReload(self):
+    def onReload(self) -> None:
+        """Przeładowanie obiektów warstwy"""
         if not self.layers:
             return
+
         self._reload_layer_metadata()
-        CONNECTION.post(
-            f'/api/v2/datasources-features/read/{self.datasource_name}', payload={"data": {"filter_expression": self.filter_expression if self.filter_expression else {}}}, callback=self.on_features.emit)
+        self.time = time.time()
+        CONNECTION.post_binary(
+            f'/api/v2/datasources-download/{self.datasource_name}'
+            f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
+            payload={"data": {"attributes": [
+                f['name']
+                for f in self.datasource.attributes_schema.get('attributes', [])
+                if f['name'] != self.datasource.geom_column_name
+            ],
+            "features_filter": self.filter_expression if self.filter_expression else {}
+            }},
+            callback=self.on_features.emit
+        )
 
-    def parseFeatures(self, task: QgsTask, data: dict):
-        """ Parsowanie danych z serwera i dodanie obiektów do warstwy """
+    def parseGpkgFeatures(self, task: QgsTask, gpkg_path: str, reverse_lookups: dict = None):
+        """ Otwiera GPKG przez OGR i kopiuje features do memory layer """
         try:
-            features = self.geojson2features(data['features'])
-        except Exception as e:
-            self.log(e)
-            return
+            gpkg_layer = QgsVectorLayer(gpkg_path, '_gpkg_tmp', 'ogr')
 
-        if task.isCanceled():
-            return
-
-        for layer in self.layers:
-            layer.dataProvider().truncate()
-
-            if task.isCanceled():
+            if not gpkg_layer.isValid() or task.isCanceled():
                 return
 
-            layer.dataProvider().addFeatures(features)
-            layer.updateExtents(True)
+            dest_fields = self.layers[0].fields()
+            src_name_to_idx = {
+                field.name(): i
+                for i, field in enumerate(gpkg_layer.fields())
+            }
 
-        self.zoomToExtent(layer)
-        self.features_loaded.emit(layer)
-        layer.reload()
-        layer.triggerRepaint()
+            mapping_instructions = tuple(
+                (src_name_to_idx.get(field.name()), field.name())
+                for field in dest_fields
+            )
 
-        if hasattr(self, 'task'):
-            del self.task
+            features_to_add = []
+            reverse_lookups = reverse_lookups or {}
+            step_multiplier = 100.0 / (gpkg_layer.featureCount() or 1)
 
-    def geojson2features(self, features: Iterable[dict]) -> List[QgsFeature]:
-        """ Przekształcenie GeoJSONa na QgsFeature """
-        # Stworzenie listy featerow warstwy
-        addedFeatures = []
-        # Zebranie nazw pól z warstwy qgis
-        layer_fields = self.layers[0].fields()
-        # Pasek postępu
-        total = 100/len(features)
-        # Iteracja po atrybutach sparsowanego obiektu
-        for idx, feature in enumerate(features):
-            f = QgsFeature(layer_fields)
-        # Sprawdzenie czy tabela ma geometrie
+            for idx, src_feat in enumerate(gpkg_layer.getFeatures()):
+                if task.isCanceled():
+                    return
+
+                dest_feat = QgsFeature(dest_fields)
+                dest_feat.setGeometry(src_feat.geometry())
+                src_attrs = src_feat.attributes()
+
+                dest_feat.setAttributes([
+                    NULL if inst[0] is None else (
+                        src_attrs[inst[0]] if src_attrs[inst[0]] in (None, NULL) or inst[1] not in reverse_lookups
+                        else reverse_lookups[inst[1]].get(str(src_attrs[inst[0]]), src_attrs[inst[0]])
+                    )
+                    for inst in mapping_instructions
+                ])
+
+                features_to_add.append(dest_feat)
+
+                if not idx % 500:
+                    try:
+                        task.setProgress(idx * step_multiplier)
+                    except RuntimeError:
+                        pass
+
+            for layer in self.layers:
+                layer.dataProvider().truncate()
+                if task.isCanceled():
+                    return
+                layer.dataProvider().addFeatures(features_to_add)
+                layer.updateExtents(True)
+
+            self.zoomToExtent(self.layers[0])
+            self.features_loaded.emit(self.layers[0])
+            self.layers[0].reload()
+            self.layers[0].triggerRepaint()
+
+        except Exception as e:
+            self.log(f'Błąd parsowania GPKG: {e}')
+        finally:
             try:
-                f.setGeometry(geojson2geom(feature['geometry']))
-            except AttributeError:
-                # Brak geometrii
+                os.unlink(gpkg_path)
+            except Exception:
                 pass
-            # Pusta lista atrybutów, do której będziemy dodawać kolejne wartości
-            attributes = []
-            for field in (f for v_name in self.valid_fields for f in self.datasource.attributes_schema['attributes'] if f['name'] == v_name):
-
-                if field['name'] == self.datasource.geom_column_name:
-                    continue
-
-                if field['name'] == self.datasource.id_column_name:
-                    attributes.append(feature['id'])
-                else:
-                    attributes.append(feature['properties'].get(field['name']))
-            f.setAttributes(attributes)
-            addedFeatures.append(f)
-            if hasattr(self, 'task'):
-                try:
-                    self.task.setProgress(idx*total)
-                except RuntimeError:
-                    continue
-        return addedFeatures
+            if getattr(self, 'task', None):
+                del self.task
 
     def _on_parent_changed_clear_child(self, feature_id: int, field_idx: int, new_value: Any) -> None:
         """Czyści wartości powiązanych pól podrzędnych w przypadku zmiany wartości w polu nadrzędnym"""
@@ -738,10 +820,11 @@ class FeatureLayer(QObject, Logger):
         if not datasource_name or not key_attr or not repr_attr:
             return None
 
-        if f'_helper_layer_{datasource_name}' in DATA_SOURCE_REGISTRY:
+        registry_key = f'_helper_layer_{datasource_name}'
+        if (layer := DATA_SOURCE_REGISTRY.get(registry_key)) is not None:
             try:
-                if DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].isValid() and DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'].id() in QgsProject.instance().mapLayers():
-                    return DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}']
+                if layer.isValid() and layer.id() in QgsProject.instance().mapLayers():
+                    return layer
             except RuntimeError:
                 pass
 
@@ -781,11 +864,11 @@ class FeatureLayer(QObject, Logger):
         if features_resp and features_resp.get('data'):
 
             def create_feature(feat_dict, fields_ref=helper.fields(), id_name=ds_meta['data']['attributes_schema']['id_name']):
+                props = {**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}
                 qf = QgsFeature(fields_ref)
                 qf.setAttributes([
-                    (json.dumps(val) if isinstance(val, (dict, list)) else val)
-                    for i in range(fields_ref.count())
-                    for val in ({**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}.get(fields_ref.field(i).name()),)
+                    json.dumps(props.get(field.name())) if isinstance(props.get(field.name()), (dict, list)) else props.get(field.name())
+                    for field in fields_ref
                 ])
                 return qf
 
@@ -797,7 +880,7 @@ class FeatureLayer(QObject, Logger):
             helper.dataChanged.emit()
             helper.triggerRepaint()
 
-        DATA_SOURCE_REGISTRY[f'_helper_layer_{datasource_name}'] = helper
+        DATA_SOURCE_REGISTRY[registry_key] = helper
         return helper
 
     def _setup_value_relation(self, layer: QgsVectorLayer, field_id: int, attribute: dict, helper_layer: QgsVectorLayer) -> None:
@@ -929,8 +1012,8 @@ class FeatureLayer(QObject, Logger):
             else:
                 attributes = feature.attributes()
                 names = feature.fields().names()
-                properties = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
-                              for i in range(len(names))}
+                properties = {name: self.sanetize_data_type(val) if val != NULL else None
+                              for name, val in zip(names, attributes)}
 
                 features_data.append(properties)
 
@@ -978,8 +1061,8 @@ class FeatureLayer(QObject, Logger):
             else:
                 attributes = feature.attributes()
                 names = feature.fields().names()
-                properties = {names[i]: self.sanetize_data_type(attributes[i]) if attributes[i] != NULL else None
-                              for i in range(len(names))}
+                properties = {name: self.sanetize_data_type(val) if val != NULL else None
+                              for name, val in zip(names, attributes)}
 
                 features.append({
                     'properties': properties,
