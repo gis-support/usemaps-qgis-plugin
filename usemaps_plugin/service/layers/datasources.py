@@ -11,7 +11,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsAttributeTableConfig)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -184,6 +184,8 @@ class FeatureLayer(QObject, Logger):
 
     def _on_features_loaded(self, layer: QgsVectorLayer) -> None:
         """Wyświetla komunikat po zakończeniu wczytywania obiektów warstwy"""
+        for layer_instance in self.layers:
+            self.setLayerAttributeForm(layer_instance, self.form_schema)
         self.message(
             self.tr('Wczytano warstwę: {}').format(layer.name()),
             level=Qgis.MessageLevel.Success,
@@ -668,20 +670,33 @@ class FeatureLayer(QObject, Logger):
 
             for layer in self.layers:
                 layer.dataProvider().deleteAttributes(
-                    list(
-                        layer.fields().indexFromName(f.name())
-                        for f in layer.fields()
-                        if f.name() not in self.valid_fields and f.name() != self.datasource.geom_column_name
-                    )
+                    [i for i in range(layer.fields().count())]
                 )
 
-                layer.dataProvider().addAttributes(
-                    list(
-                        QgsField(name, QVariant.String)
-                        for name in self.valid_fields
-                        if layer.fields().indexFromName(name) == -1
-                    )
-                )
+                fields_to_add = []
+                for name in self.valid_fields:
+                    field = self.fields.get(name)
+                    if not field:
+                        continue
+                    if name == self.datasource.geom_column_name:
+                        continue
+
+                    data_type = field.get('data_type', {}).get('name', 'string')
+
+                    type_mapping = {
+                        'decimal': QVariant.Double,
+                        'float': QVariant.Double,
+                        'integer': QVariant.LongLong,
+                        'boolean': QVariant.Bool,
+                        'date': QVariant.Date,
+                        'datetime': QVariant.DateTime,
+                        'time': QVariant.Time,
+                    }
+                    qvariant_type = type_mapping.get(data_type, QVariant.String)
+
+                    fields_to_add.append(QgsField(name, qvariant_type))
+
+                layer.dataProvider().addAttributes(fields_to_add)
                 layer.updateFields()
 
             dest_fields = self.layers[0].fields()
@@ -758,6 +773,10 @@ class FeatureLayer(QObject, Logger):
 
     def setLayerAttributeForm(self, layer: QgsVectorLayer, form_schema: dict) -> None:
         """Konfiguruje formularz atrybutów dla warstwy, opierając się na przekazanym schemacie i ustawieniach relacji"""
+        table_config = QgsAttributeTableConfig()
+        table_config.update(layer.fields())
+        layer.setAttributeTableConfig(table_config)
+
         config = layer.editFormConfig()
         id_field = layer.fields().indexFromName(self.datasource.id_column_name)
         layer.setFieldAlias(id_field, self.tr('Identyfikator'))
