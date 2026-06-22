@@ -40,17 +40,23 @@
         <translation>An unexpected error occurred. Error code: {}</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="246"/>
+        <location filename="../tools/connection.py" line="68"/>
+        <source>Błąd pobierania pliku. Kod: {}</source>
+        <translation>Error downloading file. Code: {}</translation>
+    </message>
+    <message>
+        <location filename="../tools/connection.py" line="108"/>
+        <location filename="../tools/connection.py" line="256"/>
         <source>Błąd połączenia z serwerem. Sprawdź czy adres aplikacji jest prawidłowy lub skontaktuj się z administratorem</source>
         <translation>Server connection error. Check if the application address is correct or contact your administrator</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="134"/>
+        <location filename="../tools/connection.py" line="133"/>
         <source>Połączono</source>
         <translation>Connected</translation>
     </message>
     <message>
-        <location filename="../tools/connection.py" line="168"/>
+        <location filename="../tools/connection.py" line="167"/>
         <source>Rozłączono</source>
         <translation>Disconnected</translation>
     </message>
@@ -126,32 +132,46 @@
 <context>
     <name>FeatureLayer</name>
     <message>
-        <location filename="../service/layers/datasources.py" line="225"/>
+        <location filename="../service/layers/datasources.py" line="241"/>
         <source>Wczytywanie warstwy: {}...</source>
         <translation>Loading layer: {}...</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="548"/>
         <source>Ładowanie obiektów</source>
+        <translation type="vanished">Loading features</translation>
+    </message>
+    <message>
+        <source>Pomyślnie wczytano dane warstwy: {}, czas: {}</source>
+        <translation type="vanished">Layer data loaded successfully: {}, time: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/layers/datasources.py" line="188"/>
+        <source>Wczytano warstwę: {}</source>
+        <translation>Layer loaded: {}</translation>
+    </message>
+    <message>
+        <location filename="../service/layers/datasources.py" line="626"/>
+        <source>Pobrano dane warstwy: {}, czas: {:.5f}s</source>
+        <translation>Layer data downloaded: {}, time: {:.5f}s</translation>
+    </message>
+    <message>
+        <location filename="../service/layers/datasources.py" line="634"/>
+        <source>Wczytywanie obiektów</source>
         <translation>Loading features</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="553"/>
-        <source>Pomyślnie wczytano dane warstwy: {}, czas: {}</source>
-        <translation>Layer data loaded successfully: {}, time: {}</translation>
-    </message>
-    <message>
-        <location filename="../service/layers/datasources.py" line="632"/>
+        <location filename="../service/layers/datasources.py" line="748"/>
         <source>Identyfikator</source>
         <translation>ID</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="724"/>
+        <location filename="../service/layers/datasources.py" line="985"/>
         <source>Pomyślnie zmodyfikowano dane warstwy: {}</source>
         <translation>Layer data modified successfully: {}</translation>
     </message>
     <message>
-        <location filename="../service/layers/datasources.py" line="460"/>
+        <location filename="../service/layers/datasources.py" line="429"/>
+        <location filename="../service/layers/datasources.py" line="484"/>
         <source>Pozostałe</source>
         <translation>Others</translation>
     </message>
@@ -187,6 +207,7 @@
 <context>
     <name>LayersRegistry</name>
     <message>
+        <location filename="../service/layers/layers_registry.py" line="29"/>
         <location filename="../service/layers/layers_registry.py" line="45"/>
         <source>Warstwy modułów dodatkowych</source>
         <translation>Layers of additional modules</translation>
@@ -200,102 +221,90 @@
 <context>
     <name>MainDockWidget</name>
     <message>
-        <location filename="../service/main_dockwidget.py" line="200"/>
+        <location filename="../service/main_dockwidget.py" line="220"/>
         <source>Pobrano schemat warstw</source>
         <translation>Layers schema downloaded</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="543"/>
+        <location filename="../service/main_dockwidget.py" line="345"/>
+        <location filename="../service/main_dockwidget.py" line="580"/>
         <source>Nazwa</source>
         <translation>Name</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="543"/>
+        <location filename="../service/main_dockwidget.py" line="581"/>
         <source>Status</source>
         <translation>Status</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="543"/>
+        <location filename="../service/main_dockwidget.py" line="582"/>
         <source>Kierownik</source>
         <translation>Manager</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="634"/>
+        <location filename="../service/main_dockwidget.py" line="669"/>
         <source>Projekt {} nie posiada powiązanych źródeł danych</source>
         <translation>Project {} has no associated data sources</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="653"/>
+        <location filename="../service/main_dockwidget.py" line="673"/>
+        <location filename="../service/main_dockwidget.py" line="688"/>
         <source>Projekt {} nie posiada warstw dostępnych dla Ciebie</source>
         <translation>Project {} has no layers available to you</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="619"/>
-        <source>Błąd ładowania warstwy {getattr(layer_class, 'name', '?')}: {e}</source>
-        <translation>Error loading layer {getattr(layer_class, 'name', '?')}: {e}</translation>
+        <source>Błąd ładowania warstwy {getattr(layer_class, &apos;name&apos;, &apos;?&apos;)}: {e}</source>
+        <translation type="vanished">Error loading layer {getattr(layer_class, &apos;name&apos;, &apos;?&apos;)}: {e}</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="655"/>
+        <location filename="../service/main_dockwidget.py" line="690"/>
         <source>Wczytano warstwy projektu: {}</source>
         <translation>Loaded layers for project: {}</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="523"/>
+        <location filename="../service/main_dockwidget.py" line="558"/>
         <source>Brak skonfigurowanego źródła projektów.</source>
         <translation>No configured project data source.</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="566"/>
+        <location filename="../service/main_dockwidget.py" line="604"/>
         <source>Brak danych</source>
         <translation>No data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="319"/>
+        <location filename="../service/main_dockwidget.py" line="346"/>
         <source>Właściciel</source>
         <translation>Owner</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="319"/>
+        <location filename="../service/main_dockwidget.py" line="171"/>
+        <source>Tylko administrator może dodać nową warstwę do organizacji</source>
+        <translation>Only an administrator can add a new layer to the organization</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.py" line="347"/>
         <source>Data ostatniej edycji</source>
         <translation>Last edited</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="421"/>
+        <location filename="../service/main_dockwidget.py" line="445"/>
         <source>Błąd pobierania danych mapy</source>
         <translation>Error fetching map data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="428"/>
+        <location filename="../service/main_dockwidget.py" line="452"/>
         <source>Mapa nie zawiera żadnych warstw.</source>
         <translation>The map contains no layers.</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="460"/>
+        <location filename="../service/main_dockwidget.py" line="485"/>
         <source>Zaimportowano mapę: {}</source>
         <translation>Map imported: {}</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.py" line="50"/>
+        <location filename="../service/main_dockwidget.py" line="49"/>
         <source>Narzędzie identyfikacji. Włącz, a następnie kliknij obiekt na mapie, aby sprawdzić jego atrybuty.</source>
         <translation>Identify tool. Enable it, then click a feature on the map to check its attributes.</translation>
-    </message>
-</context>
-<context>
-    <name>UsemapsIdentifyTool</name>
-    <message>
-        <location filename="../tools/identify_tool.py" line="138"/>
-        <source>Atrybuty</source>
-        <translation>Attributes</translation>
-    </message>
-    <message>
-        <location filename="../tools/identify_tool.py" line="144"/>
-        <source>Atrybuty</source>
-        <translation>Attributes</translation>
-    </message>
-    <message>
-        <location filename="../service/main_dockwidget.py" line="150"/>
-        <source>Tylko administrator może dodać nową warstwę do organizacji</source>
-        <translation>Only an administrator can add a new layer to the organization</translation>
     </message>
 </context>
 <context>
@@ -309,12 +318,12 @@
 <context>
     <name>ServiceProvider</name>
     <message>
-        <location filename="../service/main.py" line="42"/>
+        <location filename="../service/main.py" line="44"/>
         <source>Wyloguj</source>
         <translation>Logout</translation>
     </message>
     <message>
-        <location filename="../service/main.py" line="55"/>
+        <location filename="../service/main.py" line="58"/>
         <source>Zaloguj</source>
         <translation>Login</translation>
     </message>
@@ -322,12 +331,12 @@
 <context>
     <name>TwoFADialog</name>
     <message>
-        <location filename="../service/gui/two_fa.py" line="71"/>
+        <location filename="../service/gui/two_fa.py" line="72"/>
         <source>Weryfikacja dwuetapowa</source>
         <translation>Two-factor verification</translation>
     </message>
     <message>
-        <location filename="../service/gui/two_fa.py" line="71"/>
+        <location filename="../service/gui/two_fa.py" line="73"/>
         <source>Wysłano kod weryfikacyjny ponownie.</source>
         <translation>Verification code resent.</translation>
     </message>
@@ -360,44 +369,44 @@
         <translation>Login settings</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="73"/>
+        <location filename="../service/main_dockwidget.ui" line="100"/>
         <source>Dane</source>
         <translation>Data</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="79"/>
+        <location filename="../service/main_dockwidget.ui" line="106"/>
         <source>Szukaj/filtruj warstwy</source>
         <translation>Search/filter layers</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="172"/>
+        <location filename="../service/main_dockwidget.ui" line="187"/>
+        <source>Identyfikacja</source>
+        <translation>Identify</translation>
+    </message>
+    <message>
+        <location filename="../service/main_dockwidget.ui" line="232"/>
         <source>Odśwież</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="133"/>
+        <location filename="../service/main_dockwidget.ui" line="160"/>
         <source>Szukaj/filtruj projekty</source>
         <translation>Search/filter projects</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="127"/>
+        <location filename="../service/main_dockwidget.ui" line="154"/>
         <source>Projekty</source>
         <translation>Projects</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="94"/>
+        <location filename="../service/main_dockwidget.ui" line="121"/>
         <source>Mapy</source>
         <translation>Maps</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="100"/>
+        <location filename="../service/main_dockwidget.ui" line="127"/>
         <source>Szukaj/filtruj mapy</source>
         <translation>Search/filter maps</translation>
-    </message>
-    <message>
-        <location filename="../service/main_dockwidget.ui" line="120"/>
-        <source>Odśwież</source>
-        <translation>Refresh</translation>
     </message>
     <message>
         <location filename="../service/main_dockwidget.ui" line="87"/>
@@ -405,18 +414,26 @@
         <translation>Usemaps Identify</translation>
     </message>
     <message>
-        <location filename="../service/main_dockwidget.ui" line="187"/>
-        <source>Identyfikacja</source>
-        <translation>Identify</translation>
-    <location filename="../service/main_dockwidget.ui" line="165"/>
+        <location filename="../service/main_dockwidget.ui" line="225"/>
         <source>Prześlij do Usemaps</source>
         <translation>Upload to Usemaps</translation>
     </message>
 </context>
 <context>
+    <name>UsemapsIdentifyTool</name>
+    <message>
+        <location filename="../tools/identify_tool.py" line="90"/>
+        <source>Atrybuty</source>
+        <translation>Attributes</translation>
+    </message>
+    <message>
+        <source>Tylko administrator może dodać nową warstwę do organizacji</source>
+        <translation type="vanished">Only an administrator can add a new layer to the organization</translation>
+    </message>
+</context>
+<context>
     <name>UsemapsPlugin</name>
     <message>
-        <location filename="../plugin.py" line="23"/>
         <source>&amp;Wtyczka Usemaps</source>
         <translation>&amp;Usemaps Plugin</translation>
     </message>

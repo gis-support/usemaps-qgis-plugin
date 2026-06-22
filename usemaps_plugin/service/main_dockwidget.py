@@ -6,9 +6,9 @@ from qgis.PyQt import QtWidgets, uic
 from qgis.PyQt.QtCore import pyqtSignal, QEvent, Qt, QSortFilterProxyModel
 from qgis.PyQt.QtGui import QIcon, QDropEvent, QDragEnterEvent, QStandardItemModel, QStandardItem
 from qgis.core import (QgsProject, Qgis, QgsMapLayer, QgsVectorLayer,
-                        QgsGeometry, QgsWkbTypes, QgsPalLayerSettings,
-                        QgsRuleBasedRenderer, QgsSingleSymbolRenderer, QgsSymbol,
-                        QgsVectorLayerSimpleLabeling, QgsRuleBasedLabeling)
+                       QgsGeometry, QgsWkbTypes, QgsPalLayerSettings,
+                       QgsRuleBasedRenderer, QgsSingleSymbolRenderer, QgsSymbol,
+                       QgsVectorLayerSimpleLabeling, QgsRuleBasedLabeling)
 
 from qgis.utils import iface
 from .layers.mvt_layer import MVTLayer, FALLBACK_COLOR
@@ -132,9 +132,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if event:
             event.accept()
 
-
-
-
     def filter_tree_view(self, text):
         """
         Filtruje drzewko warstw po nazwach warstw.
@@ -147,13 +144,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         else:
             self.layerTreeView.collapseAll()
 
-
     def show_login_settings(self):
         """
         Wyświetla okno ustawień połączenia z serwerem.
         """
         self.loginSettingsDialog.show()
-
 
     def clear_treeview(self):
         """
@@ -170,7 +165,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         if self.proxy_model.sourceModel():
             self.proxy_model.sourceModel().clear()
-
         else:
             self.layerTreeView.setModel(None)
 
@@ -189,54 +183,39 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.proxy_model.setSourceModel(tree_model)
         root_item = tree_model.invisibleRootItem()
 
-        is_admin = CONNECTION.current_user.get('is_admin', False) if CONNECTION.current_user else False
-        self.addLayerButton.setEnabled(is_admin)
-
+        self.addLayerButton.setEnabled(CONNECTION.current_user.get('is_admin', False) if CONNECTION.current_user else False)
         self.addLayerButton.setToolTip(
-            "" if is_admin else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
+            "" if self.addLayerButton.isEnabled() else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
         )
 
         def add_layers(layers: list, group_item: QStandardItem):
-
             if not layers:
                 return
 
             for layer in layers:
-                layer_id = layer.get("id")
-
-                layer_class = layers_registry.layers.get(layer_id)
+                layer_class = layers_registry.layers.get(layer.get("id"))
 
                 if layer_class:
-                    if hasattr(layer_class, 'datasource'):
-                        if layer_class.datasource_name == 'foreign_vehicles':
-                            continue
+                    if hasattr(layer_class, 'datasource') and layer_class.datasource_name == 'foreign_vehicles':
+                        continue
 
                     layer_item = QStandardItem(layer_class.name)
                     layer_item.setData(layer_class, Qt.ItemDataRole.UserRole + 1)
                     group_item.appendRow(layer_item)
 
         def add_groups(groups: list):
-
             for group in groups:
-                if not isinstance(group, dict):
-                    continue
-
-                group_layers = group.get('layers')
-
-                if not group_layers:
+                if not isinstance(group, dict) or not group.get('layers'):
                     continue
 
                 if group['id'] == modules_layer_custom_id:
                     continue
 
-                scope = group['schema_scope']
-
-                if scope == 'core':
+                if group['schema_scope'] == 'core':
                     group_item = QStandardItem(group['name'])
                     group_item.setData([group['name'], group['id']], Qt.ItemDataRole.UserRole + 2)
-                    add_layers(group_layers, group_item)
+                    add_layers(group.get('layers'), group_item)
                     root_item.appendRow(group_item)
-
 
         add_groups(groups)
         self.layerTreeView.setModel(self.proxy_model)
@@ -245,23 +224,21 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.message(self.tr('Pobrano schemat warstw'), duration=3)
 
         self.refresh_layers()
-
         self.validate_active_layer(iface.activeLayer())
 
     def add_layer_to_map(self, index):
         """
         Dodaje wybraną warstwę/grupę do projektu.
         """
-        source_index = self.proxy_model.mapToSource(index)
-        source_model = self.proxy_model.sourceModel()
-        item = source_model.itemFromIndex(source_index)
+        item = self.proxy_model.sourceModel().itemFromIndex(self.proxy_model.mapToSource(index))
+        group_data = item.data(Qt.ItemDataRole.UserRole + 2)
 
-        if group_data := item.data(Qt.ItemDataRole.UserRole + 2):
+        if group_data:
             layers_registry.loadGroup(group_data)
-
-        elif layer_class := item.data(Qt.ItemDataRole.UserRole + 1):
-            layer_class.loadLayer()
-
+        else:
+            layer_class = item.data(Qt.ItemDataRole.UserRole + 1)
+            if layer_class:
+                layer_class.loadLayer()
 
     def eventFilter(self, obj, event):
         """
@@ -275,7 +252,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
             if event.type() == QDropEvent.Type.Drop:
                 return self.handle_map_canvas_drop(event)
-
 
         if obj == self.layerTreeView.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
             if event.button() == Qt.MouseButton.LeftButton:
@@ -293,7 +269,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         return super().eventFilter(obj, event)
 
-
     def handle_map_canvas_drag_enter(self, event):
         """
         Sprawdza, czy przeciągany obiekt posiada dane tego samego typu, co obiekty z drzewa warstw.
@@ -303,7 +278,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             return True
 
         return False
-
 
     def handle_map_canvas_drop(self, event):
         """
@@ -315,10 +289,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             return False
 
         self.add_layer_to_map(selected_indexes[0])
-
         event.acceptProposedAction()
         return True
-
 
     def refresh_layers(self):
         """
@@ -327,17 +299,25 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
 
-        res = CONNECTION.get('/api/v2/projects', sync=True)
-        if isinstance(res, dict) and 'data' in res:
-            self.load_projects_to_tableview(res['data'])
+        # TODO: w przyszłości po dostoswaniu api przejść na samo /api/v2/projects?with_default=true (SRVS-2989)
+        def fetch_all_projects():
+            default_res = CONNECTION.get('/api/v2/projects-default', sync=True) or {}
+            if 'data' in default_res:
+                yield default_res['data']
+
+            projects_res = CONNECTION.get('/api/v2/projects', sync=True) or {}
+            if 'data' in projects_res:
+                yield from projects_res['data']
+
+        self.load_projects_to_tableview(list(fetch_all_projects()))
 
         mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isSystemLayer(layer):
-                layer_qgis_id = layer.id()
-                layer_id = mappings.get(layer_qgis_id)
+                layer_id = mappings.get(layer.id())
                 if layer_id is None:
                     continue
+
                 layer_class = layers_registry.layers.get(int(layer_id))
 
                 if hasattr(layer_class, 'on_reload'):
@@ -351,7 +331,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             return
 
         layers_registry.loadData(True)
-
         self.refresh_layers()
 
         if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
@@ -378,12 +357,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         # Pobranie danych aktualnego uzytkownika
         current_data = (CONNECTION.get('/api/users/current_user', sync=True) or {}).get('data', {})
-        c_id = current_data.get('id')
-        c_name = current_data.get('name', '')
 
-        # Jeśli ID to ID aktualnego uzytkownika, bierzemy c_name. W innym przypadku pytamy API
+        # Jeśli ID to ID aktualnego uzytkownika, bierzemy nazwę z current_data. W innym przypadku pytamy API
         users = {
-            uid: (c_name if uid == c_id else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
+            uid: (current_data.get('name', '') if uid == current_data.get('id') else (CONNECTION.get(f'/api/users/{uid}', sync=True) or {}).get('data', {}).get('name', ''))
             for uid in {p.get('owner') for p in projects_data if p.get('owner')}
         }
 
@@ -395,7 +372,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 icon_file, label = 'domyslna.svg', 'Domyślna'
             elif role == 'predefined':
                 icon_file, label = 'predefiniowana.svg', 'Predefiniowana'
-            elif owner is not None and c_id is not None and str(owner) == str(c_id):
+            elif owner is not None and current_data.get('id') is not None and str(owner) == str(current_data.get('id')):
                 icon_file, label = 'moja.svg', 'Moja'
             else:
                 icon_file, label = 'udostepniona.svg', 'Udostępniona'
@@ -418,7 +395,6 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         header.sectionClicked.connect(self._handle_header_click)
         self.mapTableView.setModel(self.projects_proxy_model)
         self.mapTableView.setSortingEnabled(True)
-        header = self.mapTableView.horizontalHeader()
 
         # Ustawienie domyślnego sortowania po dacie malejąco
         header.setSortIndicator(3, Qt.SortOrder.DescendingOrder)
@@ -468,16 +444,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not project_info:
             return
 
-        res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
-        if not res or 'data' not in res:
-            self.message(self.tr("Błąd pobierania danych mapy"), level=Qgis.Warning)
-            return
+        # TODO: w przyszłości przejść tylko na CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True) (SRVS-2989)
+        if project_info.get('role') == 'default':
+            res = CONNECTION.get("/api/v2/projects-default", sync=True)
+        else:
+            res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
 
-        data = res['data']
-        layers_list = data.get('layers', [])
-
-        if not layers_list:
-            self.message(self.tr("Mapa nie zawiera żadnych warstw."), level=Qgis.Info)
+        if not res or not res.get('data', {}).get('layers'):
+            self.message(self.tr("Mapa nie zawiera żadnych warstw lub wystąpił błąd."), level=Qgis.Warning)
             return
 
         # Tworzenie głównej grupy projektu w QGIS
@@ -489,25 +463,28 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 return
 
             for item in items:
-                if (children := item.get('layers') or item.get('children')) is not None:
+                children = item.get('layers') or item.get('children')
+
+                if children is not None:
                     sub_group = parent_group.addGroup(item.get('name', 'Grupa'))
                     process_items(children, sub_group)
                     sub_group.setItemVisibilityChecked(
                         item.get('visible', True) and any(child.isVisible() for child in sub_group.children())
                     )
                 else:
-                    l_id = item.get('id')
-                    if not l_id or item.get('layer_type') == 'mvt':
+                    if not item.get('id') or item.get('layer_type') == 'mvt':
                         continue
-                    l_class = (layers_registry.layers.get(l_id) or
-                               layers_registry.layers.get(str(l_id)) or
-                               layers_registry.layers.get(int(l_id) if str(l_id).isdigit() else None))
+
+                    l_class = (layers_registry.layers.get(item.get('id')) or
+                               layers_registry.layers.get(str(item.get('id'))) or
+                               layers_registry.layers.get(int(item.get('id')) if str(item.get('id')).isdigit() else None))
+
                     if l_class:
-                        map_layer_style = item.get('style')
-                        if (node := l_class.loadLayer(group=parent_group, overridden_style_web=map_layer_style)):
+                        node = l_class.loadLayer(group=parent_group, overridden_style_web=item.get('style'))
+                        if node:
                             node.setItemVisibilityChecked(item.get('visible', True))
                     else:
-                        self.log(f"Nie znaleziono definicji warstwy o ID: {l_id}")
+                        self.log(f"Nie znaleziono definicji warstwy o ID: {item.get('id')}")
 
         process_items(res['data'].get('layers', []), root_group)
         self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)
@@ -561,8 +538,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
 
     def offers_projects_on_setting_check(self, response: dict) -> None:
-        enabled = (response or {}).get('data', False)
-        if enabled:
+        if (response or {}).get('data', False):
             self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, True)
             self.offers_projects_fetch_config()
         else:
@@ -586,8 +562,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 self.message(self.tr("Brak skonfigurowanego źródła projektów."), level=1)
                 return
 
-            ds_meta = CONNECTION.get(f'/api/v2/datasources/{self.project_datasource_name}', sync=True) or {}
-            ds_data = ds_meta.get('data', {})
+            ds_data = (CONNECTION.get(f'/api/v2/datasources/{self.project_datasource_name}', sync=True) or {}).get('data', {})
             self.project_id_field = ds_data.get('pk_attribute', 'id')
             self.project_name_field = ds_data.get('label_attribute') or self.project_settings.get('name_attribute', 'nazwa')
 
@@ -624,13 +599,12 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 manager_name = user_data.get('name') or user_data.get('username') or str(m_id)
             else:
                 manager_name = ""
-            manager_item = QStandardItem(manager_name)
 
             self.offers_projects_source_model.appendRow([
                 id_item,
                 QStandardItem(str(p.get(self.project_name_field, '') or "")),
                 QStandardItem(str(p.get(self.project_settings.get('status_attribute', 'status'), '') or self.tr("Brak danych"))),
-                manager_item
+                QStandardItem(manager_name)
             ])
 
         # Domyślne sortowanie po ID rosnąco
@@ -781,8 +755,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         )
 
     def databox_on_module_check(self, response: dict) -> None:
-        data = (response or {}).get('data', {})
-        is_enabled = data.get('enabled', False)
+        is_enabled = (response or {}).get('data', {}).get('enabled', False)
         self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, is_enabled)
         if is_enabled:
             self.databox_fetch_layers()
@@ -802,10 +775,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
         self.databox_source_model.removeRows(0, self.databox_source_model.rowCount())
         for layer_data in response['data']:
-            layer_name = layer_data.get('name')
-            layer_title = layer_data.get('title') or layer_name
-
-            item = QStandardItem(layer_title)
+            item = QStandardItem(layer_data.get('title') or layer_data.get('name'))
             item.setData(layer_data, Qt.ItemDataRole.UserRole + 1)
             self.databox_source_model.appendRow([item])
 
@@ -813,9 +783,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         index = self.databoxTableView.currentIndex()
         if not index.isValid():
             return
-        source_index = self.databox_proxy_model.mapToSource(index)
-        item = self.databox_source_model.itemFromIndex(source_index)
-        return item.data(Qt.ItemDataRole.UserRole + 1)
+        return self.databox_source_model.itemFromIndex(self.databox_proxy_model.mapToSource(index)).data(Qt.ItemDataRole.UserRole + 1)
 
     def databox_load_selected_mvt(self) -> None:
         layer_data = self._get_selected_layer_data()
@@ -871,24 +839,17 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             )
             return
 
-        features_data = response['data']
-        if isinstance(features_data, dict) and features_data.get("type") == "FeatureCollection":
-            collections = {"pobrane_dane": features_data}
-        else:
-            collections = features_data
-
-        layer_data = self.current_download_layer_data
+        collections = {"pobrane_dane": response['data']} if isinstance(response['data'], dict) and response['data'].get("type") == "FeatureCollection" else response['data']
 
         for collection_name, collection in collections.items():
             if not collection.get("features"):
                 self.message(
-                    self.tr(f"Brak obiektów na wybranym obszarze dla warstwy {collection_name}."),
+                    self.tr(f"Brak obiektów na wykszonym obszarze dla warstwy {collection_name}."),
                     level=Qgis.MessageLevel.Info,
                     duration=3
                 )
                 continue
 
-            display_title = layer_data.get('title') or collection_name
             temp_layer = QgsVectorLayer(json.dumps(collection), "temp", "ogr")
             if not temp_layer.isValid():
                 self.message(
@@ -898,15 +859,14 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 )
                 continue
 
-            uri = f"{QgsWkbTypes.displayString(temp_layer.wkbType())}?crs={temp_layer.crs().authid()}"
-            memory_layer = QgsVectorLayer(uri, display_title, "memory")
+            memory_layer = QgsVectorLayer(f"{QgsWkbTypes.displayString(temp_layer.wkbType())}?crs={temp_layer.crs().authid()}", self.current_download_layer_data.get('title') or collection_name, "memory")
             provider = memory_layer.dataProvider()
             provider.addAttributes(temp_layer.fields())
             memory_layer.updateFields()
             provider.addFeatures(list(temp_layer.getFeatures()))
             memory_layer.updateExtents()
 
-            self._apply_vector_symbology(memory_layer, layer_data)
+            self._apply_vector_symbology(memory_layer, self.current_download_layer_data)
             QgsProject.instance().addMapLayer(memory_layer)
             self.message(self.tr(f"Pomyślnie wczytano obiekty dla {collection_name}."), duration=3)
 
@@ -916,16 +876,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             return
 
         uniques = style_data.get('uniques', {})
-        fallback_style = {
-            'fill-color': FALLBACK_COLOR,
-            'fill-outline-color': '#000000',
-            'fill-opacity': 0.7
-        }
 
         if uniques and uniques.get('values'):
-            prop = uniques.get('property', '')
-            symbol = QgsSymbol.defaultSymbol(vlayer.geometryType())
-            renderer = QgsRuleBasedRenderer(symbol)
+            renderer = QgsRuleBasedRenderer(QgsSymbol.defaultSymbol(vlayer.geometryType()))
             root_rule = renderer.rootRule()
             while root_rule.children():
                 root_rule.removeChild(root_rule.children()[0])
@@ -936,15 +889,13 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             has_labels = False
 
             for key, value in uniques['values'].items():
-                is_null = MVTLayer.is_null_key(key)
-                if is_null:
+                if MVTLayer.is_null_key(key):
                     continue
-                filter_expr = f'"{prop}" = \'{key}\''
-                rule_label = str(key)
+                filter_expr = f'"{uniques.get("property", "")}" = \'{key}\''
 
                 rule = QgsRuleBasedRenderer.Rule(MVTLayer.create_symbol(value))
                 rule.setFilterExpression(filter_expr)
-                rule.setLabel(rule_label)
+                rule.setLabel(str(key))
                 root_rule.appendChild(rule)
 
                 if value.get('labels'):
@@ -958,7 +909,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                         l_rule.setMaximumScale(settings.maximumScale)
                     labeling_root.appendChild(l_rule)
 
-            else_rule = QgsRuleBasedRenderer.Rule(MVTLayer.create_symbol(fallback_style))
+            else_rule = QgsRuleBasedRenderer.Rule(MVTLayer.create_symbol({
+                'fill-color': FALLBACK_COLOR,
+                'fill-outline-color': '#000000',
+                'fill-opacity': 0.7
+            }))
             else_rule.setIsElse(True)
             else_rule.setLabel("Pozostałe")
             root_rule.appendChild(else_rule)
