@@ -1,3 +1,14 @@
+1.4
+Optimized loading of large data sets
+Improved default map handling
+Fixed an error when changing the data structure
+
+1.3
+Support for Usemaps hierarchical dictionaries
+New Usemaps Identification map tool
+Symbology fixes
+Support for 64-bit integer data type
+
 1.2
 Support for Qt 6
 Upload QGIS layers to Usemaps added
