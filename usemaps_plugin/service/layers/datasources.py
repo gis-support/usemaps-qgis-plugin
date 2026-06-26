@@ -11,7 +11,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsDefaultValue)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -785,7 +785,13 @@ class FeatureLayer(QObject, Logger):
                             )
 
                     if isinstance(inner_element.get('default_value_policy'), dict):
-                        self.default_values[attr] = inner_element.get('default_value_policy').get('value')
+                        val = inner_element.get('default_value_policy').get('value')
+                        self.default_values[attr] = val
+                        if val is not None and field_id != -1:
+                            if isinstance(val, str):
+                                layer.setDefaultValueDefinition(field_id, QgsDefaultValue(f"'{val}'"))
+                            else:
+                                layer.setDefaultValueDefinition(field_id, QgsDefaultValue(str(val)))
 
                     tab.addChildElement(QgsAttributeEditorField(attr, idx, tab))
                 config.addTab(tab)
