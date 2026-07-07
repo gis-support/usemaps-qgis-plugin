@@ -303,7 +303,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             return
 
         self.load_projects_to_tableview(
-            (CONNECTION.get('/api/v2/projects?with_default=true', sync=True) or {}).get('data', [])
+            (CONNECTION.get('/api/v2/projects', sync=True) or {}).get('data', [])
         )
 
         mappings = get_layer_mappings()
