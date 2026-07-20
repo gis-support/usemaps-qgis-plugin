@@ -759,6 +759,21 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, is_enabled)
         if is_enabled:
             self.databox_fetch_layers()
+            CONNECTION.get(
+                '/api/settings/databox_data_download_v2',
+                callback=self.databox_on_setting_check
+            )
+        else:
+            self.databox_reset()
+
+    def databox_on_setting_check(self, response: dict) -> None:
+        is_enabled = bool((response or {}).get('data', False))
+        self.btnDownloadData.setEnabled(is_enabled)
+        if hasattr(self, 'select_area_widget') and self.select_area_widget:
+            self.select_area_widget.setEnabled(is_enabled)
+            if not is_enabled:
+                self.select_area_widget.closeWidget()
+                self.select_area_widget.selectAreaBtn.setChecked(False)
 
     def databox_fetch_layers(self) -> None:
         if not CONNECTION.is_connected:
@@ -934,6 +949,10 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
     def databox_reset(self) -> None:
         self.databox_source_model.removeRows(0, self.databox_source_model.rowCount())
         self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, False)
+        if hasattr(self, 'select_area_widget') and self.select_area_widget:
+            self.select_area_widget.closeWidget()
+            if self.select_area_widget.selectAreaBtn.isChecked():
+                self.select_area_widget.selectAreaBtn.setChecked(False)
 
     # Identyfikacja
 
