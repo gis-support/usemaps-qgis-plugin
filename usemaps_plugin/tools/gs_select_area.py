@@ -9,7 +9,8 @@ from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QCursor, QPixmap, QColor, QKeyEvent
 from qgis.core import (QgsWkbTypes, QgsGeometry, QgsProject, QgsDistanceArea,
                        QgsCoordinateTransformContext, QgsUnitTypes, QgsPointXY,
-                       QgsMapLayerProxyModel, QgsMapLayer, QgsMessageLog, Qgis
+                       QgsMapLayerProxyModel, QgsMapLayer, QgsMessageLog, Qgis,
+                       QgsCoordinateTransform
                        )
 from qgis.gui import QgsRubberBand, QgsMapTool, QgsMapMouseEvent
 from qgis.utils import iface
@@ -385,7 +386,22 @@ class SelectFeaturesTool(QgsMapTool):
             else:
                 features = list(layer.getFeatures())
 
-            geoms = [f.geometry() for f in features if f.geometry() and not f.geometry().isNull()]
+            project_crs = QgsProject.instance().crs()
+            layer_crs = layer.crs()
+            transform_context = QgsProject.instance().transformContext()
+            
+            if project_crs != layer_crs:
+                transform = QgsCoordinateTransform(layer_crs, project_crs, transform_context)
+            else:
+                transform = None
+
+            geoms = []
+            for f in features:
+                if f.geometry() and not f.geometry().isNull():
+                    geom = QgsGeometry(f.geometry())
+                    if transform:
+                        geom.transform(transform)
+                    geoms.append(geom)
 
             if geoms:
                 self.geometry = QgsGeometry.unaryUnion(geoms)

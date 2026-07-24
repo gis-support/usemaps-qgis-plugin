@@ -841,7 +841,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         CONNECTION.post(
             '/api/databox/download_data_v2?background=false',
             payload=payload,
-            callback=self.databox_on_data_downloaded
+            callback=self.databox_on_data_downloaded,
+            error_callback=lambda _: self.btnDownloadData.setEnabled(True)
         )
 
     def databox_on_data_downloaded(self, response: dict) -> None:
