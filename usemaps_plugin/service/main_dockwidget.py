@@ -859,7 +859,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         for collection_name, collection in collections.items():
             if not collection.get("features"):
                 self.message(
-                    self.tr(f"Brak obiektów na wykszonym obszarze dla warstwy {collection_name}."),
+                    self.tr(f"Brak obiektów na wskazanym obszarze dla warstwy {collection_name}."),
                     level=Qgis.MessageLevel.Info,
                     duration=3
                 )
