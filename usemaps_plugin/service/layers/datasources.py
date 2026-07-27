@@ -198,10 +198,13 @@ class FeatureLayer(QObject, Logger):
         }
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
-            self.form_schema = self.metadata['data']['form_schema']
-            self.filter_expression = self.metadata['data'].get('filter_expression')
-            self.valid_fields = self._validate_fields(
-                form_schema=self.form_schema)
+            if self.metadata and 'data' in self.metadata:
+                self.form_schema = self.metadata['data']['form_schema']
+                self.filter_expression = self.metadata['data'].get('filter_expression')
+                self.valid_fields = self._validate_fields(
+                    form_schema=self.form_schema)
+            else:
+                self.log(f"Nie można było pobrać metadanych dla warstwy {self.id}: {self.metadata}")
 
     def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Wczytywanie warstwy do QGIS """
@@ -950,77 +953,9 @@ class FeatureLayer(QObject, Logger):
     def getFeaturesDbIds(self, qgis_ids: list, layer: QgsVectorLayer) -> list:
         return [f[self.datasource.id_column_name] for f in layer.dataProvider().getFeatures( QgsFeatureRequest().setFilterFids( qgis_ids ))]
 
-    def _get_dict_fields(self, layer: QgsVectorLayer) -> dict:
-        """Pobiera i mapuje słownikowe pola z dozwolonymi wartościami"""
-        dict_fields = {}
-        for attr in self.datasource.attributes_schema.get('attributes', []):
-            if attr.get('type') != 'dict':
-                continue
-
-            allowed_values = attr.get('allowed_values')
-            if not allowed_values:
-                continue
-
-            field_idx = layer.fields().indexFromName(attr['name'])
-            if field_idx == -1:
-                continue
-
-            dict_fields[field_idx] = {
-                'name': layer.attributeDisplayName(field_idx),
-                'allowed': set(allowed_values)
-            }
-        return dict_fields
-
-    def _check_invalid_dict_value(self, field_idx: int, value: Any, dict_fields: dict, invalid_entries: set) -> None:
-        """Weryfikuje pojedynczą wartość i dodaje błąd jeśli jest nieprawidłowa"""
-        if field_idx not in dict_fields:
-            return
-
-        if value in (None, NULL, ''):
-            return
-
-        if value in dict_fields[field_idx]['allowed']:
-            return
-
-        field_name = dict_fields[field_idx]['name']
-        invalid_entries.add(f"'{value}' w polu '{field_name}'")
-
-    def _validate_dictionary_values(self, layer: QgsVectorLayer, edit_buffer) -> bool:
-        """Zwraca True jeśli wszystkie wartości słownikowe są poprawne"""
-        dict_fields = self._get_dict_fields(layer)
-        if not dict_fields:
-            return True
-
-        invalid_entries = set()
-
-        for changes in edit_buffer.changedAttributeValues().values():
-            for field_idx, value in changes.items():
-                self._check_invalid_dict_value(field_idx, value, dict_fields, invalid_entries)
-
-        for feature in edit_buffer.addedFeatures().values():
-            for field_idx, value in enumerate(feature.attributes()):
-                self._check_invalid_dict_value(field_idx, value, dict_fields, invalid_entries)
-
-        if not invalid_entries:
-            return True
-
-        entries_str = ", ".join(invalid_entries)
-        msg = self.tr(
-            'Nie udało się zapisać zmian. Wprowadzona wartość {} '
-            'nie pasuje do listy dozwolonych wartości słownika. '
-            'Wybierz poprawną pozycję z listy i spróbuj ponownie.'
-        ).format(entries_str)
-
-        self.message(msg, level=Qgis.MessageLevel.Critical, duration=10)
-        self.on_reload.emit(True)
-        return False
-
     def manageFeatures(self):
         layer = self.sender()
         edit_buffer = layer.editBuffer()
-
-        if not self._validate_dictionary_values(layer, edit_buffer):
-            return
 
         payload = {'data_source_name': self.datasource_name, 'layer_id': self.id}
 
@@ -1040,10 +975,28 @@ class FeatureLayer(QObject, Logger):
             payload['delete']['features_ids'] = self.getFeaturesDbIds(
                 to_delete['qgis_features_ids'], layer)
 
-        CONNECTION.post(
+        response = CONNECTION.post(
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
+        if response and response.get('error'):
+            errors = response.get('errors')
+            if not errors and isinstance(response.get('parameters'), dict):
+                errors = response.get('parameters').get('errors')
+
+            msg_to_show = response.get('error_message', 'Wystąpił nieznany błąd')
+
+            if errors and isinstance(errors, list) and len(errors) > 0:
+                first_err = errors[0]
+                if isinstance(first_err, dict):
+                    msg_to_show = first_err.get('error_message', first_err.get('message', str(first_err)))
+                else:
+                    msg_to_show = str(first_err)
+            elif errors and isinstance(errors, dict):
+                msg_to_show = str(errors)
+
+            self.message(msg_to_show, level=Qgis.MessageLevel.Critical, duration=10)
+            self.on_reload.emit(True)
 
     def afterModify(self, data: dict):
         if data.get("error"):

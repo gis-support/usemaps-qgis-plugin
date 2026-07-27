@@ -190,6 +190,11 @@ class Connection(QObject, Logger):
             reply = self.MANAGER.blockingGet(request)
 
             response = json.loads(bytearray(reply.content()))
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+
+            if callback and not (status_code and 400 <= status_code < 500):
+                callback(response)
+
             return response
 
         reply = self.MANAGER.get(request)
@@ -211,8 +216,9 @@ class Connection(QObject, Logger):
         if sync:
             reply = self.MANAGER.blockingPost(request, data)
             response = json.loads(bytearray(reply.content()))
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
-            if callback:
+            if callback and not (status_code and 400 <= status_code < 500):
                 callback(response)
 
             return response
