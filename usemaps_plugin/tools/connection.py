@@ -19,6 +19,7 @@ class Connection(QObject, Logger):
     MANAGER = QgsNetworkAccessManager()
     MANAGER.setTransferTimeout(600000)
     QUEUE = {}
+    SUCCESS_STATUS_CODES = (200, 201, 204)
 
     def __init__(self, parent=None):
         super(Connection, self).__init__()
@@ -38,25 +39,23 @@ class Connection(QObject, Logger):
         if not queue_item:
             return
 
-        reply = queue_item[0]
-        callback = queue_item[1]
-        error_callback = queue_item[2] if len(queue_item) > 2 else None
+        reply, callback, error_callback = queue_item
 
         try:
             response_data = json.loads(bytearray(reply.readAll()))
         except Exception as e:
             cls.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
             if error_callback:
-                error_callback(e)
+                error_callback({'error_message': str(e)})
             return
 
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
-        if status_code not in (200, 201, 204):
+        if status_code not in cls.SUCCESS_STATUS_CODES:
             if status_code == 500:
                 error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data.get('error_code', ''))
             else:
-                error_message = response_data.get('error_message', 'Błąd')
+                error_message = response_data.get('error_message', QCoreApplication.translate("Connection", "Błąd"))
 
             cls.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
             if error_callback:
@@ -69,20 +68,24 @@ class Connection(QObject, Logger):
     @classmethod
     def _exec_binary_callback(cls, uuid_: str):
         """Callback dla binarnych odpowiedzi """
-        reply, callback = cls.QUEUE[uuid_]
+        queue_item = cls.QUEUE.pop(uuid_, None)
+        if not queue_item:
+            return
+
+        reply, callback, error_callback = queue_item
 
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
         if status_code not in (200, 201):
-            cls.message(
-                QCoreApplication.translate("Connection", "Błąd pobierania pliku. Kod: {}").format(status_code),
-                level=Qgis.MessageLevel.Critical, duration=5)
-            del cls.QUEUE[uuid_]
+            error_message = QCoreApplication.translate("Connection", "Błąd pobierania pliku. Kod: {}").format(status_code)
+            cls.message(error_message, level=Qgis.MessageLevel.Critical, duration=5)
+            if error_callback:
+                error_callback({'error_message': error_message})
             return
 
         data = bytes(reply.readAll())
-        callback(data)
-        del cls.QUEUE[uuid_]
+        if callback:
+            callback(data)
 
     @staticmethod
     def generate_random_uuid():
@@ -193,7 +196,7 @@ class Connection(QObject, Logger):
 
         return request
 
-    def get(self, endpoint: str, sync: bool = False, callback: any = None):
+    def get(self, endpoint: str, sync: bool = False, callback: any = None, error_callback: any = None):
         request = self._createRequest(endpoint)
 
         if sync:
@@ -204,14 +207,14 @@ class Connection(QObject, Logger):
 
         reply = self.MANAGER.get(request)
 
-        if callback:
+        if callback or error_callback:
             random_uuid = self.generate_random_uuid()
-            self.QUEUE[random_uuid] = (reply, callback)
+            self.QUEUE[random_uuid] = (reply, callback, error_callback)
             reply.finished.connect(lambda: self._exec_callback(random_uuid))
 
         return reply
 
-    def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync:bool = False, error_callback: any = None):
+    def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync: bool = False, error_callback: any = None):
         request = self._createRequest(endpoint)
         if srid:
             request.setRawHeader(b'X-Response-SRID', srid.encode())
@@ -221,8 +224,16 @@ class Connection(QObject, Logger):
         if sync:
             reply = self.MANAGER.blockingPost(request, data)
             response = json.loads(bytearray(reply.content()))
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
-            if callback:
+            if status_code not in self.SUCCESS_STATUS_CODES:
+                self.message(
+                    response.get('error_message', self.tr('Błąd')) if isinstance(response, dict) else self.tr('Błąd'),
+                    level=Qgis.MessageLevel.Critical, duration=5
+                )
+                if error_callback:
+                    error_callback(response)
+            elif callback:
                 callback(response)
 
             return response
@@ -237,15 +248,16 @@ class Connection(QObject, Logger):
 
         return response
 
-    def post_binary(self, endpoint: str, payload: dict, callback: any):
+    def post_binary(self, endpoint: str, payload: dict, callback: any = None, error_callback: any = None):
         """Pobiera binarną odpowiedź przez POST"""
         request = self._createRequest(endpoint, content_type='application/json')
         data = json.dumps(payload).encode()
         reply = self.MANAGER.post(request, data)
 
-        random_uuid = self.generate_random_uuid()
-        self.QUEUE[random_uuid] = (reply, callback)
-        reply.finished.connect(lambda: self._exec_binary_callback(random_uuid))
+        if callback or error_callback:
+            random_uuid = self.generate_random_uuid()
+            self.QUEUE[random_uuid] = (reply, callback, error_callback)
+            reply.finished.connect(lambda: self._exec_binary_callback(random_uuid))
 
     def verify_code(self, code: int):
         settings = QSettings()
