@@ -20,9 +20,9 @@ class UsemapsPlugin:
         self.install_translation()
         self.actions = []
         self.modules = []
+        self.service = None
         self.menu = self.tr(u'&Wtyczka Usemaps')
         self.toolbar = self.iface.addToolBar(PLUGIN_NAME)
-        self.toolbar.addSeparator
 
     def install_translation(self):
         locale = QSettings().value('locale/userLocale')[0:2]
@@ -114,6 +114,9 @@ class UsemapsPlugin:
         self.toolbar.deleteLater()
         self.topMenu.clear()
         self.topMenu.deleteLater()
+
+        if self.service:
+            self.service.unload()
 
     def open_url(self, url):
         QDesktopServices.openUrl(QUrl(url))

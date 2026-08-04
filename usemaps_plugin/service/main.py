@@ -16,7 +16,6 @@ class ServiceProvider():
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self.parent.toolbar.addSeparator()
         self.dockwidget = MainDockWidget()
 
         self.dockwidgetAction = self.parent.add_dockwidget_action(
@@ -122,3 +121,8 @@ class ServiceProvider():
                         layer.triggerRepaint()
 
         self.dockwidget.refresh_layers()
+
+    def unload(self):
+        if self.dockwidget:
+            self.parent.iface.removeDockWidget(self.dockwidget)
+            self.dockwidget.deleteLater()
