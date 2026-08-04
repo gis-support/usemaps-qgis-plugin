@@ -71,6 +71,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.proxy_model.setRecursiveFilteringEnabled(True)
+        self.proxy_model.setFilterRole(Qt.ItemDataRole.UserRole + 3)
 
         layers_registry.on_schema.connect(self.add_layers_to_treeview)
         layers_registry.on_schema.connect(self.offers_projects_check_module)
@@ -188,7 +189,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
             "" if self.addLayerButton.isEnabled() else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
         )
 
-        def add_layers(layers: list, group_item: QStandardItem):
+        def add_layers(layers: list, group_item: QStandardItem, group_name: str):
             if not layers:
                 return
 
@@ -201,6 +202,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
 
                     layer_item = QStandardItem(layer_class.name)
                     layer_item.setData(layer_class, Qt.ItemDataRole.UserRole + 1)
+                    layer_item.setData(f"{layer_class.name} {group_name}", Qt.ItemDataRole.UserRole + 3)
                     group_item.appendRow(layer_item)
 
         def add_groups(groups: list):
@@ -214,7 +216,8 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
                 if group['schema_scope'] == 'core':
                     group_item = QStandardItem(group['name'])
                     group_item.setData([group['name'], group['id']], Qt.ItemDataRole.UserRole + 2)
-                    add_layers(group.get('layers'), group_item)
+                    group_item.setData(group['name'], Qt.ItemDataRole.UserRole + 3)
+                    add_layers(group.get('layers'), group_item, group['name'])
                     root_item.appendRow(group_item)
 
         add_groups(groups)
