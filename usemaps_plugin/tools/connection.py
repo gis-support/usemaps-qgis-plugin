@@ -34,27 +34,37 @@ class Connection(QObject, Logger):
 
     @classmethod
     def _exec_callback(cls, uuid_: str):
-        reply, callback = cls.QUEUE[uuid_]
+        queue_item = cls.QUEUE.pop(uuid_, None)
+        if not queue_item:
+            return
+
+        reply = queue_item[0]
+        callback = queue_item[1]
+        error_callback = queue_item[2] if len(queue_item) > 2 else None
 
         try:
             response_data = json.loads(bytearray(reply.readAll()))
         except Exception as e:
             cls.log(QCoreApplication.translate("Connection", "Błąd komunikacji z API: {}").format(e))
+            if error_callback:
+                error_callback(e)
             return
 
         status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
 
         if status_code not in (200, 201, 204):
             if status_code == 500:
-                error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data['error_code'])
+                error_message = QCoreApplication.translate("Connection", "Wystąpił nieoczekiwany błąd. Kod błędu: {}").format(response_data.get('error_code', ''))
             else:
-                error_message = response_data['error_message']
+                error_message = response_data.get('error_message', 'Błąd')
 
             cls.message(f'{error_message}', level=Qgis.MessageLevel.Critical, duration=5)
+            if error_callback:
+                error_callback(response_data)
             return
 
-        callback(response_data)
-        del cls.QUEUE[uuid_]
+        if callback:
+            callback(response_data)
 
     @classmethod
     def _exec_binary_callback(cls, uuid_: str):
@@ -201,7 +211,7 @@ class Connection(QObject, Logger):
 
         return reply
 
-    def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync:bool = False):
+    def post(self, endpoint: str, payload: dict, callback: any = None, srid: str = None, sync:bool = False, error_callback: any = None):
         request = self._createRequest(endpoint)
         if srid:
             request.setRawHeader(b'X-Response-SRID', srid.encode())
@@ -220,9 +230,9 @@ class Connection(QObject, Logger):
         reply = self.MANAGER.post(request, data)
         response = reply.readAll()
 
-        if callback:
+        if callback or error_callback:
             random_uuid = self.generate_random_uuid()
-            self.QUEUE[random_uuid] = (reply, callback)
+            self.QUEUE[random_uuid] = (reply, callback, error_callback)
             reply.finished.connect(lambda: self._exec_callback(random_uuid))
 
         return response
