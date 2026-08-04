@@ -48,6 +48,7 @@ class LayersRegistry(QObject, Logger):
                         'subgroups': []}]
         self.layers = {}
         self.baselayers = {}
+        DATA_SOURCE_REGISTRY.clear()
         self.message(self.tr('Pobieranie schematu warstw...'), duration=10)
         CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)
