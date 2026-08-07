@@ -302,17 +302,9 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
 
-        # TODO: w przyszłości po dostoswaniu api przejść na samo /api/v2/projects?with_default=true (SRVS-2989)
-        def fetch_all_projects():
-            default_res = CONNECTION.get('/api/v2/projects-default', sync=True) or {}
-            if 'data' in default_res:
-                yield default_res['data']
-
-            projects_res = CONNECTION.get('/api/v2/projects', sync=True) or {}
-            if 'data' in projects_res:
-                yield from projects_res['data']
-
-        self.load_projects_to_tableview(list(fetch_all_projects()))
+        self.load_projects_to_tableview(
+            (CONNECTION.get('/api/v2/projects', sync=True) or {}).get('data', [])
+        )
 
         mappings = get_layer_mappings()
         for layer in QgsProject.instance().mapLayers().values():
@@ -447,11 +439,7 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not project_info:
             return
 
-        # TODO: w przyszłości przejść tylko na CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True) (SRVS-2989)
-        if project_info.get('role') == 'default':
-            res = CONNECTION.get("/api/v2/projects-default", sync=True)
-        else:
-            res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
+        res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
 
         if not res or not res.get('data', {}).get('layers'):
             self.message(self.tr("Mapa nie zawiera żadnych warstw lub wystąpił błąd."), level=Qgis.Warning)
