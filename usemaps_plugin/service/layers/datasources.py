@@ -200,10 +200,13 @@ class FeatureLayer(QObject, Logger):
         }
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
-            self.form_schema = self.metadata['data']['form_schema']
-            self.filter_expression = self.metadata['data'].get('filter_expression')
-            self.valid_fields = self._validate_fields(
-                form_schema=self.form_schema)
+            if self.metadata and 'data' in self.metadata:
+                self.form_schema = self.metadata['data']['form_schema']
+                self.filter_expression = self.metadata['data'].get('filter_expression')
+                self.valid_fields = self._validate_fields(
+                    form_schema=self.form_schema)
+            else:
+                self.log(f"Nie można było pobrać metadanych dla warstwy {self.id}: {self.metadata}")
 
     def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Wczytywanie warstwy do QGIS """
@@ -1046,10 +1049,28 @@ class FeatureLayer(QObject, Logger):
             payload['delete']['features_ids'] = self.getFeaturesDbIds(
                 to_delete['qgis_features_ids'], layer)
 
-        CONNECTION.post(
+        response = CONNECTION.post(
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
+        if response and response.get('error'):
+            errors = response.get('errors')
+            if not errors and isinstance(response.get('parameters'), dict):
+                errors = response.get('parameters').get('errors')
+
+            msg_to_show = response.get('error_message', 'Wystąpił nieznany błąd')
+
+            if errors and isinstance(errors, list) and len(errors) > 0:
+                first_err = errors[0]
+                if isinstance(first_err, dict):
+                    msg_to_show = first_err.get('error_message', first_err.get('message', str(first_err)))
+                else:
+                    msg_to_show = str(first_err)
+            elif errors and isinstance(errors, dict):
+                msg_to_show = str(errors)
+
+            self.message(msg_to_show, level=Qgis.MessageLevel.Critical, duration=10)
+            self.on_reload.emit(True)
 
     def afterModify(self, data: dict):
         if data.get("error"):
