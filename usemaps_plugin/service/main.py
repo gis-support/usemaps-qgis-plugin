@@ -1,7 +1,8 @@
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
-from qgis.core import QgsProject, QgsMapLayer
+from qgis.core import QgsProject, QgsMapLayer, QgsVectorTileLayer, QgsDataSourceUri
 from qgis.PyQt.QtCore import QCoreApplication
+import urllib.parse
 
 from ..tools.connection import CONNECTION
 from .layers.layers_registry import layers_registry
@@ -15,7 +16,6 @@ class ServiceProvider():
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self.parent.toolbar.addSeparator()
         self.dockwidget = MainDockWidget()
 
         self.dockwidgetAction = self.parent.add_dockwidget_action(
@@ -96,6 +96,7 @@ class ServiceProvider():
     def readProject(self):
         if not CONNECTION.is_connected:
             return
+        token = CONNECTION.token
         for layer in QgsProject.instance().mapLayers().values():
             if layers_registry.isSystemLayer(layer):
                 migrate_layer_gisbox_id_variable(layer)
@@ -107,5 +108,21 @@ class ServiceProvider():
                         layer_class.setLayer(layer)
                     else:
                         layer_class.setLayer(layer, from_project=True)
+            elif isinstance(layer, QgsVectorTileLayer) and '/api/databox/mvt/' in layer.source():
+                if token:
+                    source_parts = layer.source().split('&')
+                    current_tokens = [p.split('=', 1)[1] for p in source_parts if p.startswith('http-header:X-Access-Token=')]
+                    if not current_tokens or current_tokens[0] != token:
+                        new_parts = [p for p in source_parts if not p.startswith('http-header:X-Access-Token=')]
+                        new_parts.append(f'http-header:X-Access-Token={token}')
+                        new_source = '&'.join(new_parts)
+                        layer.setDataSource(new_source, layer.name(), "vectortile")
+                        layer.reload()
+                        layer.triggerRepaint()
 
         self.dockwidget.refresh_layers()
+
+    def unload(self):
+        if self.dockwidget:
+            self.parent.iface.removeDockWidget(self.dockwidget)
+            self.dockwidget.deleteLater()
