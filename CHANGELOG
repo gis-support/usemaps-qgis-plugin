@@ -1,3 +1,11 @@
+1.5
+Added support for Data.Box layers – Classification Contours
+Improved handling of table structure changes
+Plugin elements are now removed from the GUI when the plugin is disabled
+Improved dictionary handling
+Filtering by group name no longer hides layers
+Removed duplicate default map from the list
+
 1.4
 Optimized loading of large data sets
 Improved default map handling
