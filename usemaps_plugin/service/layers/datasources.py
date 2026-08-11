@@ -783,7 +783,7 @@ class FeatureLayer(QObject, Logger):
         finally:
             try:
                 os.unlink(gpkg_path)
-            except Exception:
+            except FileNotFoundError:
                 pass
             if getattr(self, 'task', None):
                 del self.task
