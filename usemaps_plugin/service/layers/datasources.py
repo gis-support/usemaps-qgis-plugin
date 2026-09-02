@@ -11,7 +11,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsAttributeTableConfig)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsFields, QgsAttributeTableConfig)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -50,6 +50,7 @@ class FeatureLayer(QObject, Logger):
     on_features = pyqtSignal(object)  # bytes
     on_reload = pyqtSignal(bool)
     features_loaded = pyqtSignal(object)
+    loading_changed = pyqtSignal(bool)
 
     def __init__(self, data: dict, parent=None):
         super(FeatureLayer, self).__init__(parent)
@@ -77,6 +78,7 @@ class FeatureLayer(QObject, Logger):
         self.filter_expression = data.get("filter_expression")
 
         self._clear_dependencies = {}
+        self.is_loading = False
 
         self.connectSignals()
 
@@ -181,6 +183,17 @@ class FeatureLayer(QObject, Logger):
         self.on_features.connect(self.onFeatures)
         self.on_reload.connect(self.onReload)
         self.features_loaded.connect(self._on_features_loaded)
+
+    def _set_loading(self, state: bool) -> None:
+        """ Zmiana stanu wczytywania danych warstwy """
+        if self.is_loading == state:
+            return
+        self.is_loading = state
+        self.loading_changed.emit(state)
+
+    def _on_download_error(self, response: dict = None) -> None:
+        """ Blad pobierania danych warstwy, zwolnienie blokady interfejsu """
+        self._set_loading(False)
 
     def _on_features_loaded(self, layer: QgsVectorLayer) -> None:
         """Wyświetla komunikat po zakończeniu wczytywania obiektów warstwy"""
@@ -564,6 +577,7 @@ class FeatureLayer(QObject, Logger):
     def getFeatures(self):
         """ Wysyłanie żądania o obiekty warstwy """
         self.time = time.time()
+        self._set_loading(True)
         CONNECTION.post_binary(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
@@ -574,7 +588,8 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_features.emit
+            callback=self.on_features.emit,
+            error_callback=self._on_download_error,
         )
 
     def _build_relation_reverse_lookups(self) -> dict:
@@ -638,6 +653,7 @@ class FeatureLayer(QObject, Logger):
     def onFeatures(self, data: bytes):
         """ Odbiór binarnego GPKG, zapis do pliku tymczasowego """
         if not self.layers:
+            self._set_loading(False)
             return
 
         if getattr(self, 'task', None):
@@ -669,9 +685,11 @@ class FeatureLayer(QObject, Logger):
         self.task = QgsTask.fromFunction(
             self.tr('Wczytywanie obiektów'),
             self.parseGpkgFeatures,
+            on_finished=self.applyParsedFeatures,
             gpkg_path=tmp_path,
             reverse_lookups=self._build_relation_reverse_lookups(),
         )
+        self._set_loading(True)
         QgsApplication.taskManager().addTask(self.task)
 
     def onReload(self) -> None:
@@ -681,6 +699,7 @@ class FeatureLayer(QObject, Logger):
 
         self._reload_layer_metadata()
         self.time = time.time()
+        self._set_loading(True)
         CONNECTION.post_binary(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
@@ -691,49 +710,45 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_features.emit
+            callback=self.on_features.emit,
+            error_callback=self._on_download_error,
         )
 
+    def buildDestinationFields(self) -> QgsFields:
+        """ Buduje strukturę pól warstwy na podstawie schematu formularza. """
+        type_mapping = {
+            'decimal': QVariant.Double,
+            'float': QVariant.Double,
+            'integer': QVariant.LongLong,
+            'boolean': QVariant.Bool,
+            'date': QVariant.Date,
+            'datetime': QVariant.DateTime,
+            'time': QVariant.Time,
+        }
+
+        dest_fields = QgsFields()
+
+        for name in self.valid_fields:
+            field = self.fields.get(name)
+            if not field:
+                continue
+            if name == self.datasource.geom_column_name:
+                continue
+
+            data_type = field.get('data_type', {}).get('name', 'string')
+            dest_fields.append(QgsField(name, type_mapping.get(data_type, QVariant.String)))
+
+        return dest_fields
+
     def parseGpkgFeatures(self, task: QgsTask, gpkg_path: str, reverse_lookups: dict = None):
-        """ Otwiera GPKG przez OGR i kopiuje features do memory layer """
+        """ Otwiera GPKG przez OGR i buduje obiekty (wątek roboczy) """
         try:
             gpkg_layer = QgsVectorLayer(gpkg_path, '_gpkg_tmp', 'ogr')
 
             if not gpkg_layer.isValid() or task.isCanceled():
                 return
 
-            for layer in self.layers:
-                layer.dataProvider().deleteAttributes(
-                    [i for i in range(layer.fields().count())]
-                )
-
-                fields_to_add = []
-                for name in self.valid_fields:
-                    field = self.fields.get(name)
-                    if not field:
-                        continue
-                    if name == self.datasource.geom_column_name:
-                        continue
-
-                    data_type = field.get('data_type', {}).get('name', 'string')
-
-                    type_mapping = {
-                        'decimal': QVariant.Double,
-                        'float': QVariant.Double,
-                        'integer': QVariant.LongLong,
-                        'boolean': QVariant.Bool,
-                        'date': QVariant.Date,
-                        'datetime': QVariant.DateTime,
-                        'time': QVariant.Time,
-                    }
-                    qvariant_type = type_mapping.get(data_type, QVariant.String)
-
-                    fields_to_add.append(QgsField(name, qvariant_type))
-
-                layer.dataProvider().addAttributes(fields_to_add)
-                layer.updateFields()
-
-            dest_fields = self.layers[0].fields()
+            dest_fields = self.buildDestinationFields()
             gpkg_fields = gpkg_layer.fields()
 
             mapping_instructions = tuple(
@@ -766,11 +781,35 @@ class FeatureLayer(QObject, Logger):
                     except RuntimeError:
                         pass
 
+            return {'fields': dest_fields, 'features': features_to_add}
+
+        finally:
+            try:
+                os.unlink(gpkg_path)
+            except FileNotFoundError:
+                pass
+
+    def applyParsedFeatures(self, exception, result=None) -> None:
+        """ Kopiuje sparsowane features do memory layer (wątek główny) """
+        try:
+            if exception is not None:
+                self.log(f'Błąd parsowania GPKG: {exception}')
+                return
+
+            if not result or not self.layers:
+                return
+
+            dest_fields = result['fields']
+            features_to_add = result['features']
+
             for layer in self.layers:
-                layer.dataProvider().truncate()
-                if task.isCanceled():
-                    return
-                layer.dataProvider().addFeatures(features_to_add)
+                provider = layer.dataProvider()
+                provider.deleteAttributes([i for i in range(layer.fields().count())])
+                provider.addAttributes([field for field in dest_fields])
+                layer.updateFields()
+
+                provider.truncate()
+                provider.addFeatures(features_to_add)
                 layer.updateExtents(True)
 
             self.zoomToExtent(self.layers[0])
@@ -778,15 +817,9 @@ class FeatureLayer(QObject, Logger):
             self.layers[0].reload()
             self.layers[0].triggerRepaint()
 
-        except Exception as e:
-            self.log(f'Błąd parsowania GPKG: {e}')
         finally:
-            try:
-                os.unlink(gpkg_path)
-            except FileNotFoundError:
-                pass
-            if getattr(self, 'task', None):
-                del self.task
+            self.task = None
+            self._set_loading(False)
 
     def _on_parent_changed_clear_child(self, feature_id: int, field_idx: int, new_value: Any) -> None:
         """Czyści wartości powiązanych pól podrzędnych w przypadku zmiany wartości w polu nadrzędnym"""
