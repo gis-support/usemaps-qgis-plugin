@@ -1004,10 +1004,22 @@ class FeatureLayer(QObject, Logger):
         except Exception as e:
             self.log(e)
 
+        key_name = relation.get('attribute')
+        value_name = relation.get('representation')
+
+        if not filter_expression and key_name == value_name:
+            unique_values = {
+                feat[value_name]
+                for feat in helper_layer.getFeatures()
+                if feat[value_name] not in (None, NULL, '')
+            }
+            self.setWidgetType(layer, {value: value for value in sorted(unique_values, key=str)}, field_id)
+            return
+
         config = {
             'Layer': helper_layer.id(),
-            'Key': relation.get('attribute'),
-            'Value': relation.get('representation'),
+            'Key': key_name,
+            'Value': value_name,
             'AllowNull': True,
             'OrderByValue': True,
         }
