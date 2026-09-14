@@ -336,13 +336,25 @@ class FeatureLayer(QObject, Logger):
             symbol.setOpacity(float(opacity) if opacity is not None else 1.0)
 
         elif geom_type == QgsWkbTypes.PointGeometry:
+            outline_width = style_dict.get('circle-outline-width', 0)
+            outline_color = QColor(style_dict.get('circle-outline-color', '#000000'))
+            outline_color.setAlphaF(float(style_dict.get('circle-outline-opacity', 1.0)))
+
             symbol = QgsMarkerSymbol.createSimple({
                 'color': color.name(),
                 'size': str(style_dict.get('circle-radius', 3.0) * 1.5),
-                'outline_style': 'no'
+                'outline_color': outline_color.name(),
+                'outline_width': str(outline_width * 0.75),
+                'outline_style': 'solid' if outline_width else 'no'
             })
             symbol.setSizeUnit(QgsUnitTypes.RenderPoints)
             symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+
+            symbol_layer = symbol.symbolLayer(0)
+            if symbol_layer:
+                symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+                symbol_layer.setStrokeColor(outline_color)
+
         else:
             return QgsSymbol.defaultSymbol(geom_type)
 
