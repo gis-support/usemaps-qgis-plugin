@@ -784,10 +784,11 @@ class FeatureLayer(QObject, Logger):
             return {'fields': dest_fields, 'features': features_to_add}
 
         finally:
+            gpkg_layer = None
             try:
                 os.unlink(gpkg_path)
-            except FileNotFoundError:
-                pass
+            except OSError as e:
+                self.log(f'Nie udało się usunąć pliku tymczasowego {gpkg_path}: {e}')
 
     def applyParsedFeatures(self, exception, result=None) -> None:
         """ Kopiuje sparsowane features do memory layer (wątek główny) """
