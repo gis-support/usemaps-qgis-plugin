@@ -215,7 +215,6 @@ class FeatureLayer(QObject, Logger):
             toc_name = self.name
         if self.layers:
             layer = self.layers[0].clone()
-            layer.dataProvider().addFeatures(self.layers[0].getFeatures())
             layer.updateExtents(True)
         else:
             self._reload_layer_metadata()
