@@ -559,19 +559,25 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
         CONNECTION.get(
-            '/api/license_manager/modules/OZE_MODULE',
+            '/api/license_manager/modules',
             callback=self.offers_projects_on_module_check
         )
 
     def offers_projects_on_module_check(self, response: dict) -> None:
-        data = (response or {}).get('data', {})
-        if data.get('enabled') and data.get('configured'):
-            CONNECTION.get(
-                '/api/settings/oze_module_enabled',
-                callback=self.offers_projects_on_setting_check
-            )
-        else:
+        data = next((m for m in (response or {}).get('data', []) if m.get('name') == 'OZE_MODULE'), {})
+        if not (data.get('enabled') and data.get('configured')):
             self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, False)
+            return
+
+        # Fallback bez klucza manager_enabled
+        if 'manager_enabled' not in data:
+            CONNECTION.get('/api/settings/oze_module_enabled', callback=self.offers_projects_on_setting_check)
+            return
+
+        is_enabled = data['manager_enabled'] is not False
+        self.tabWidget.setTabVisible(self._PROJECTS_TAB_INDEX, is_enabled)
+        if is_enabled:
+            self.offers_projects_fetch_config()
 
     def offers_projects_on_setting_check(self, response: dict) -> None:
         if (response or {}).get('data', False):
@@ -786,21 +792,23 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
         CONNECTION.get(
-            '/api/license_manager/modules/DATABOX_DATA_MODULE',
+            '/api/license_manager/modules',
             callback=self.databox_on_module_check
         )
 
     def databox_on_module_check(self, response: dict) -> None:
-        is_enabled = (response or {}).get('data', {}).get('enabled', False)
+        data = next((m for m in (response or {}).get('data', []) if m.get('name') == 'DATABOX_DATA_MODULE'), {})
+        is_enabled = bool(data.get('enabled')) and data.get('manager_enabled') is not False
         self.tabWidget.setTabVisible(self._DATABOX_TAB_INDEX, is_enabled)
-        if is_enabled:
-            self.databox_fetch_layers()
-            CONNECTION.get(
-                '/api/settings/databox_data_download_v2',
-                callback=self.databox_on_setting_check
-            )
-        else:
+        if not is_enabled:
             self.databox_reset()
+            return
+
+        self.databox_fetch_layers()
+        CONNECTION.get(
+            '/api/settings/databox_data_download_v2',
+            callback=self.databox_on_setting_check
+        )
 
     def databox_on_setting_check(self, response: dict) -> None:
         is_enabled = bool((response or {}).get('data', False))
