@@ -5,7 +5,7 @@ from qgis.PyQt.QtCore import pyqtSignal, QObject
 from qgis.core import QgsProject
 from qgis.utils import iface
 
-from . import RELATION_VALUES_MAPPING_REGISTRY
+from . import RELATION_VALUES_MAPPING_REGISTRY, DATA_SOURCE_REGISTRY
 
 from .basemap_layer import BaseMapLayer
 from .datasources import FeatureLayer
@@ -41,11 +41,14 @@ class LayersRegistry(QObject, Logger):
         if not connected:
             return
         # Wyczyszczenie wcześniejszych danych
+        RELATION_VALUES_MAPPING_REGISTRY.clear()
+        DATA_SOURCE_REGISTRY.clear()
         self.groups = [{'id': -99, 'schema_scope': 'module',
                         'name': self.tr('Warstwy modułów dodatkowych'),
                         'subgroups': []}]
         self.layers = {}
         self.baselayers = {}
+        DATA_SOURCE_REGISTRY.clear()
         self.message(self.tr('Pobieranie schematu warstw...'), duration=10)
         CONNECTION.get(
             '/api/dataio/data_sources/relation_values_mapping/all', callback=self._set_relation_values_mapping)

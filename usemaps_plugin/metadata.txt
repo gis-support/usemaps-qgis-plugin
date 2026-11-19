@@ -10,7 +10,7 @@
 name=Usemaps
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
-version=1.4
+version=1.5
 author=GIS Support
 email=info@gis-support.pl
 license=GPL-3.0-only
@@ -26,9 +26,12 @@ tracker=https://github.com/gis-support/usemaps-qgis-plugin/issues
 repository=https://github.com/gis-support/usemaps-qgis-plugin
 # End of mandatory metadata
 
-changelog=Optimized loading of large data sets
-    Improved default map handling
-    Fixed an error when changing the data structure
+changelog=Added support for Data.Box layers – Classification Contours
+    Improved handling of table structure changes
+    Plugin elements are now removed from the GUI when the plugin is disabled
+    Improved dictionary handling
+    Filtering by group name no longer hides layers
+    Removed duplicate default map from the list
 
 # Tags are comma separated with spaces allowed
 tags=python

@@ -11,7 +11,7 @@ from qgis.core import (QgsCoordinateTransform, QgsCoordinateReferenceSystem, Qgs
                        QgsProject, QgsVectorLayer, QgsTask, QgsApplication, QgsFeature, Qgis, QgsFeatureRequest,
                        QgsSingleSymbolRenderer, QgsMarkerSymbol, QgsLineSymbol, QgsFillSymbol, QgsPalLayerSettings,
                        QgsVectorLayerSimpleLabeling, QgsTextFormat, QgsWkbTypes, QgsCategorizedSymbolRenderer,
-                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsDefaultValue)
+                       QgsRendererCategory,QgsSymbol, QgsUnitTypes, QgsRuleBasedRenderer, QgsField, QgsFields, QgsDefaultValue, QgsAttributeTableConfig)
 from qgis.utils import iface
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, QVariant
@@ -50,6 +50,7 @@ class FeatureLayer(QObject, Logger):
     on_features = pyqtSignal(object)  # bytes
     on_reload = pyqtSignal(bool)
     features_loaded = pyqtSignal(object)
+    loading_changed = pyqtSignal(bool)
 
     def __init__(self, data: dict, parent=None):
         super(FeatureLayer, self).__init__(parent)
@@ -77,6 +78,7 @@ class FeatureLayer(QObject, Logger):
         self.filter_expression = data.get("filter_expression")
 
         self._clear_dependencies = {}
+        self.is_loading = False
 
         self.connectSignals()
 
@@ -120,10 +122,10 @@ class FeatureLayer(QObject, Logger):
         self.registerLayer(layer)
         if from_project:
             self._reload_layer_metadata()
+        self.setLayerAttributeForm(layer, self.form_schema)
         if layer is not None and len(self.layers) == 1:
             # Pobieranie obiektów warstwy (tylko za pierwszym razem)
             self.getFeatures()
-        self.setLayerAttributeForm(layer, self.form_schema)
 
     def _validate_fields(self, form_schema: dict):
         elements = form_schema.get('elements')
@@ -182,8 +184,21 @@ class FeatureLayer(QObject, Logger):
         self.on_reload.connect(self.onReload)
         self.features_loaded.connect(self._on_features_loaded)
 
+    def _set_loading(self, state: bool) -> None:
+        """ Zmiana stanu wczytywania danych warstwy """
+        if self.is_loading == state:
+            return
+        self.is_loading = state
+        self.loading_changed.emit(state)
+
+    def _on_download_error(self, response: dict = None) -> None:
+        """ Blad pobierania danych warstwy, zwolnienie blokady interfejsu """
+        self._set_loading(False)
+
     def _on_features_loaded(self, layer: QgsVectorLayer) -> None:
         """Wyświetla komunikat po zakończeniu wczytywania obiektów warstwy"""
+        for layer_instance in self.layers:
+            self.setLayerAttributeForm(layer_instance, self.form_schema)
         self.message(
             self.tr('Wczytano warstwę: {}').format(layer.name()),
             level=Qgis.MessageLevel.Success,
@@ -198,10 +213,13 @@ class FeatureLayer(QObject, Logger):
         }
         if self.id:
             self.metadata = CONNECTION.get(f'/api/v2/features-layers/{self.id}', True)
-            self.form_schema = self.metadata['data']['form_schema']
-            self.filter_expression = self.metadata['data'].get('filter_expression')
-            self.valid_fields = self._validate_fields(
-                form_schema=self.form_schema)
+            if self.metadata and 'data' in self.metadata:
+                self.form_schema = self.metadata['data']['form_schema']
+                self.filter_expression = self.metadata['data'].get('filter_expression')
+                self.valid_fields = self._validate_fields(
+                    form_schema=self.form_schema)
+            else:
+                self.log(f"Nie można było pobrać metadanych dla warstwy {self.id}: {self.metadata}")
 
     def loadLayer(self, checked=False, group=None, toc_name=None, overridden_style_web=None):
         """ Wczytywanie warstwy do QGIS """
@@ -210,7 +228,6 @@ class FeatureLayer(QObject, Logger):
             toc_name = self.name
         if self.layers:
             layer = self.layers[0].clone()
-            layer.dataProvider().addFeatures(self.layers[0].getFeatures())
             layer.updateExtents(True)
         else:
             self._reload_layer_metadata()
@@ -331,13 +348,25 @@ class FeatureLayer(QObject, Logger):
             symbol.setOpacity(float(opacity) if opacity is not None else 1.0)
 
         elif geom_type == QgsWkbTypes.PointGeometry:
+            outline_width = style_dict.get('circle-outline-width', 0)
+            outline_color = QColor(style_dict.get('circle-outline-color', '#000000'))
+            outline_color.setAlphaF(float(style_dict.get('circle-outline-opacity', 1.0)))
+
             symbol = QgsMarkerSymbol.createSimple({
                 'color': color.name(),
                 'size': str(style_dict.get('circle-radius', 3.0) * 1.5),
-                'outline_style': 'no'
+                'outline_color': outline_color.name(),
+                'outline_width': str(outline_width * 0.75),
+                'outline_style': 'solid' if outline_width else 'no'
             })
             symbol.setSizeUnit(QgsUnitTypes.RenderPoints)
             symbol.setOpacity(style_dict.get('fill-opacity', style_dict.get('opacity', 1.0)))
+
+            symbol_layer = symbol.symbolLayer(0)
+            if symbol_layer:
+                symbol_layer.setStrokeWidthUnit(QgsUnitTypes.RenderPoints)
+                symbol_layer.setStrokeColor(outline_color)
+
         else:
             return QgsSymbol.defaultSymbol(geom_type)
 
@@ -559,6 +588,7 @@ class FeatureLayer(QObject, Logger):
     def getFeatures(self):
         """ Wysyłanie żądania o obiekty warstwy """
         self.time = time.time()
+        self._set_loading(True)
         CONNECTION.post_binary(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
@@ -569,11 +599,12 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_features.emit
+            callback=self.on_features.emit,
+            error_callback=self._on_download_error,
         )
 
     def _build_relation_reverse_lookups(self) -> dict:
-        """Buduje odwrócone mapowania dla pól Value Relation"""
+        """Buduje odwrócone mapowania dla pól Value Relation oraz Value Map"""
         if not self.layers:
             return {}
 
@@ -581,6 +612,15 @@ class FeatureLayer(QObject, Logger):
         lookups = {}
         for i, field in enumerate(layer.fields()):
             setup = layer.editorWidgetSetup(i)
+
+            if setup.type() == 'ValueMap':
+                lookups[field.name()] = {
+                    str(text): value
+                    for entry in setup.config().get('map', [])
+                    for text, value in entry.items()
+                    if text and value not in (None, NULL)
+                }
+                continue
 
             if setup.type() != 'ValueRelation':
                 continue
@@ -599,9 +639,32 @@ class FeatureLayer(QObject, Logger):
 
         return {k: v for k, v in lookups.items() if v}
 
+    def _resolve_attribute(self, src_attrs: list, instruction: tuple, reverse_lookups: dict) -> Any:
+        """Mapuje wartość z GPKG na wartość docelową warstwy"""
+        src_index, field_name, field_type, is_numeric = instruction
+
+        if src_index == -1:
+            return NULL
+
+        value = src_attrs[src_index]
+        if value in (None, NULL):
+            return NULL
+
+        if lookup := reverse_lookups.get(field_name):
+            value = lookup.get(str(value), value)
+
+        if not is_numeric or isinstance(value, (int, float)):
+            return value
+
+        try:
+            return float(value) if field_type == QVariant.Double else int(value)
+        except (TypeError, ValueError):
+            return NULL
+
     def onFeatures(self, data: bytes):
         """ Odbiór binarnego GPKG, zapis do pliku tymczasowego """
         if not self.layers:
+            self._set_loading(False)
             return
 
         if getattr(self, 'task', None):
@@ -633,9 +696,11 @@ class FeatureLayer(QObject, Logger):
         self.task = QgsTask.fromFunction(
             self.tr('Wczytywanie obiektów'),
             self.parseGpkgFeatures,
+            on_finished=self.applyParsedFeatures,
             gpkg_path=tmp_path,
             reverse_lookups=self._build_relation_reverse_lookups(),
         )
+        self._set_loading(True)
         QgsApplication.taskManager().addTask(self.task)
 
     def onReload(self) -> None:
@@ -645,6 +710,7 @@ class FeatureLayer(QObject, Logger):
 
         self._reload_layer_metadata()
         self.time = time.time()
+        self._set_loading(True)
         CONNECTION.post_binary(
             f'/api/v2/datasources-download/{self.datasource_name}'
             f'?format=gpkg&layer_id={self.id}&attributes_use_verbose_names=false',
@@ -655,40 +721,49 @@ class FeatureLayer(QObject, Logger):
             ],
             "features_filter": self.filter_expression if self.filter_expression else {}
             }},
-            callback=self.on_features.emit
+            callback=self.on_features.emit,
+            error_callback=self._on_download_error,
         )
 
+    def buildDestinationFields(self) -> QgsFields:
+        """ Buduje strukturę pól warstwy na podstawie schematu formularza. """
+        type_mapping = {
+            'decimal': QVariant.Double,
+            'float': QVariant.Double,
+            'integer': QVariant.LongLong,
+            'boolean': QVariant.Bool,
+            'date': QVariant.Date,
+            'datetime': QVariant.DateTime,
+            'time': QVariant.Time,
+        }
+
+        dest_fields = QgsFields()
+
+        for name in self.valid_fields:
+            field = self.fields.get(name)
+            if not field:
+                continue
+            if name == self.datasource.geom_column_name:
+                continue
+
+            data_type = field.get('data_type', {}).get('name', 'string')
+            dest_fields.append(QgsField(name, type_mapping.get(data_type, QVariant.String)))
+
+        return dest_fields
+
     def parseGpkgFeatures(self, task: QgsTask, gpkg_path: str, reverse_lookups: dict = None):
-        """ Otwiera GPKG przez OGR i kopiuje features do memory layer """
+        """ Otwiera GPKG przez OGR i buduje obiekty (wątek roboczy) """
         try:
             gpkg_layer = QgsVectorLayer(gpkg_path, '_gpkg_tmp', 'ogr')
 
             if not gpkg_layer.isValid() or task.isCanceled():
                 return
 
-            for layer in self.layers:
-                layer.dataProvider().deleteAttributes(
-                    list(
-                        layer.fields().indexFromName(f.name())
-                        for f in layer.fields()
-                        if f.name() not in self.valid_fields and f.name() != self.datasource.geom_column_name
-                    )
-                )
-
-                layer.dataProvider().addAttributes(
-                    list(
-                        QgsField(name, QVariant.String)
-                        for name in self.valid_fields
-                        if layer.fields().indexFromName(name) == -1
-                    )
-                )
-                layer.updateFields()
-
-            dest_fields = self.layers[0].fields()
+            dest_fields = self.buildDestinationFields()
             gpkg_fields = gpkg_layer.fields()
 
             mapping_instructions = tuple(
-                (gpkg_fields.indexFromName(field.name()), field.name())
+                (gpkg_fields.indexFromName(field.name()), field.name(), field.type(), field.isNumeric())
                 for field in dest_fields
             )
 
@@ -705,10 +780,7 @@ class FeatureLayer(QObject, Logger):
                 src_attrs = src_feat.attributes()
 
                 dest_feat.setAttributes([
-                    NULL if inst[0] == -1 else (
-                        src_attrs[inst[0]] if src_attrs[inst[0]] in (None, NULL) or inst[1] not in reverse_lookups
-                        else reverse_lookups[inst[1]].get(str(src_attrs[inst[0]]), src_attrs[inst[0]])
-                    )
+                    self._resolve_attribute(src_attrs, inst, reverse_lookups)
                     for inst in mapping_instructions
                 ])
 
@@ -720,11 +792,36 @@ class FeatureLayer(QObject, Logger):
                     except RuntimeError:
                         pass
 
+            return {'fields': dest_fields, 'features': features_to_add}
+
+        finally:
+            gpkg_layer = None
+            try:
+                os.unlink(gpkg_path)
+            except OSError as e:
+                self.log(f'Nie udało się usunąć pliku tymczasowego {gpkg_path}: {e}')
+
+    def applyParsedFeatures(self, exception, result=None) -> None:
+        """ Kopiuje sparsowane features do memory layer (wątek główny) """
+        try:
+            if exception is not None:
+                self.log(f'Błąd parsowania GPKG: {exception}')
+                return
+
+            if not result or not self.layers:
+                return
+
+            dest_fields = result['fields']
+            features_to_add = result['features']
+
             for layer in self.layers:
-                layer.dataProvider().truncate()
-                if task.isCanceled():
-                    return
-                layer.dataProvider().addFeatures(features_to_add)
+                provider = layer.dataProvider()
+                provider.deleteAttributes([i for i in range(layer.fields().count())])
+                provider.addAttributes([field for field in dest_fields])
+                layer.updateFields()
+
+                provider.truncate()
+                provider.addFeatures(features_to_add)
                 layer.updateExtents(True)
 
             self.zoomToExtent(self.layers[0])
@@ -732,15 +829,9 @@ class FeatureLayer(QObject, Logger):
             self.layers[0].reload()
             self.layers[0].triggerRepaint()
 
-        except Exception as e:
-            self.log(f'Błąd parsowania GPKG: {e}')
         finally:
-            try:
-                os.unlink(gpkg_path)
-            except Exception:
-                pass
-            if getattr(self, 'task', None):
-                del self.task
+            self.task = None
+            self._set_loading(False)
 
     def _on_parent_changed_clear_child(self, feature_id: int, field_idx: int, new_value: Any) -> None:
         """Czyści wartości powiązanych pól podrzędnych w przypadku zmiany wartości w polu nadrzędnym"""
@@ -758,6 +849,10 @@ class FeatureLayer(QObject, Logger):
 
     def setLayerAttributeForm(self, layer: QgsVectorLayer, form_schema: dict) -> None:
         """Konfiguruje formularz atrybutów dla warstwy, opierając się na przekazanym schemacie i ustawieniach relacji"""
+        table_config = QgsAttributeTableConfig()
+        table_config.update(layer.fields())
+        layer.setAttributeTableConfig(table_config)
+
         config = layer.editFormConfig()
         id_field = layer.fields().indexFromName(self.datasource.id_column_name)
         layer.setFieldAlias(id_field, self.tr('Identyfikator'))
@@ -804,10 +899,12 @@ class FeatureLayer(QObject, Logger):
                 self.setWidgetType(layer, {v: v for v in attribute['allowed_values']}, field_id)
 
             elif attribute.get('type') == 'relation' and 'parent' not in attribute['name']:
-                if attribute.get('relation', {}).get('filter_expression'):
+                relation = attribute.get('relation', {})
+
+                if relation.get('filter_expression'):
                     parent_field = next(
                         (re.search(r'{{(.*?)}}', str(val)).group(1)
-                         for k, val in json.loads(re.sub(r'({{[^}]+}})', r'"\1"', attribute.get('relation', {}).get('filter_expression', '{}'))).items()
+                         for k, val in json.loads(re.sub(r'({{[^}]+}})', r'"\1"', relation.get('filter_expression', '{}'))).items()
                          if '$EQUAL' in k and re.search(r'{{(.*?)}}', str(val))),
                         None
                     )
@@ -820,17 +917,17 @@ class FeatureLayer(QObject, Logger):
                         layer.attributeValueChanged.connect(self._on_parent_changed_clear_child)
 
                 if helper_layer := self._get_or_create_helper_layer(
-                    attribute.get('relation', {}).get('data_source', ''),
-                    attribute.get('relation', {}).get('attribute', ''),
-                    attribute.get('relation', {}).get('representation', ''),
+                    relation.get('data_source', ''),
+                    relation.get('attribute', ''),
+                    relation.get('representation', ''),
                 ):
                     self._setup_value_relation(layer, field_id, attribute, helper_layer)
                     continue
 
                 if cached := (RELATION_VALUES_MAPPING_REGISTRY
-                    .get(attribute.get('relation', {}).get('data_source', ''), {})
-                    .get(attribute.get('relation', {}).get('attribute', ''), {})
-                    .get(attribute.get('relation', {}).get('representation', ''))
+                    .get(relation.get('data_source', ''), {})
+                    .get(relation.get('attribute', ''), {})
+                    .get(relation.get('representation', ''))
                 ):
                     self.setWidgetType(layer, {d['text']: d['value'] for d in cached}, field_id)
 
@@ -842,10 +939,15 @@ class FeatureLayer(QObject, Logger):
             return None
 
         registry_key = f'_helper_layer_{datasource_name}'
-        if (layer := DATA_SOURCE_REGISTRY.get(registry_key)) is not None:
+
+        if registry_key in DATA_SOURCE_REGISTRY:
+            cached_layer = DATA_SOURCE_REGISTRY[registry_key]
+
+            if cached_layer is None:
+                return None
             try:
-                if layer.isValid() and layer.id() in QgsProject.instance().mapLayers():
-                    return layer
+                if cached_layer.isValid() and cached_layer.id() in QgsProject.instance().mapLayers():
+                    return cached_layer
             except RuntimeError:
                 pass
 
@@ -857,6 +959,7 @@ class FeatureLayer(QObject, Logger):
 
         ds_meta = CONNECTION.get(f'/api/v2/datasources/{datasource_name}', sync=True)
         if not ds_meta or not ds_meta.get('data'):
+            DATA_SOURCE_REGISTRY[registry_key] = None
             return None
 
         helper = QgsVectorLayer(
@@ -870,6 +973,7 @@ class FeatureLayer(QObject, Logger):
         )
 
         if not helper.isValid():
+            DATA_SOURCE_REGISTRY[registry_key] = None
             return None
 
         # Wyłączenie komunikatu QGIS przy zapisie projektu
@@ -882,24 +986,27 @@ class FeatureLayer(QObject, Logger):
             sync=True
         )
 
-        if features_resp and features_resp.get('data'):
+        if not features_resp or not (features_resp.get('data') or {}).get('features'):
+            QgsProject.instance().removeMapLayer(helper.id())
+            DATA_SOURCE_REGISTRY[registry_key] = None
+            return None
 
-            def create_feature(feat_dict, fields_ref=helper.fields(), id_name=ds_meta['data']['attributes_schema']['id_name']):
-                props = {**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}
-                qf = QgsFeature(fields_ref)
-                qf.setAttributes([
-                    json.dumps(props.get(field.name())) if isinstance(props.get(field.name()), (dict, list)) else props.get(field.name())
-                    for field in fields_ref
-                ])
-                return qf
+        def create_feature(feat_dict, fields_ref=helper.fields(), id_name=ds_meta['data']['attributes_schema']['id_name']):
+            props = {**feat_dict.get('properties', {}), id_name: feat_dict.get('id')}
+            qf = QgsFeature(fields_ref)
+            qf.setAttributes([
+                json.dumps(props.get(field.name())) if isinstance(props.get(field.name()), (dict, list)) else props.get(field.name())
+                for field in fields_ref
+            ])
+            return qf
 
-            helper.dataProvider().addFeatures(
-                list(create_feature(feat) for feat in features_resp['data'].get('features', []))
-            )
+        helper.dataProvider().addFeatures(
+            list(create_feature(feat) for feat in features_resp['data'].get('features', []))
+        )
 
-            helper.updateExtents()
-            helper.dataChanged.emit()
-            helper.triggerRepaint()
+        helper.updateExtents()
+        helper.dataChanged.emit()
+        helper.triggerRepaint()
 
         DATA_SOURCE_REGISTRY[registry_key] = helper
         return helper
@@ -907,8 +1014,8 @@ class FeatureLayer(QObject, Logger):
     def _setup_value_relation(self, layer: QgsVectorLayer, field_id: int, attribute: dict, helper_layer: QgsVectorLayer) -> None:
         """ Ustawia powiązanie wartości (Value Relation) w formularzu na podstawie konfiguracji atrybutu i warstwy pomocniczej. """
         relation = attribute.get('relation', {})
-        filter_expr_str = relation.get('filter_expression', '{}')
-        filter_expr_value = relation.get('filter_expression_value', 'attribute')
+        filter_expr_str = relation.get('filter_expression') or '{}'
+        filter_expr_value = relation.get('filter_expression_value') or 'attribute'
         attrs = self.datasource.attributes_schema.get('attributes', [])
 
         filter_expression = None
@@ -993,10 +1100,28 @@ class FeatureLayer(QObject, Logger):
             payload['delete']['features_ids'] = self.getFeaturesDbIds(
                 to_delete['qgis_features_ids'], layer)
 
-        CONNECTION.post(
+        response = CONNECTION.post(
             f"/api/dataio/data_sources/{self.datasource_name}/features/edit?layer_id={self.id}",
             {"data": payload}, callback=self.afterModify, sync=True
         )
+        if response and response.get('error'):
+            errors = response.get('errors')
+            if not errors and isinstance(response.get('parameters'), dict):
+                errors = response.get('parameters').get('errors')
+
+            msg_to_show = response.get('error_message', 'Wystąpił nieznany błąd')
+
+            if errors and isinstance(errors, list) and len(errors) > 0:
+                first_err = errors[0]
+                if isinstance(first_err, dict):
+                    msg_to_show = first_err.get('error_message', first_err.get('message', str(first_err)))
+                else:
+                    msg_to_show = str(first_err)
+            elif errors and isinstance(errors, dict):
+                msg_to_show = str(errors)
+
+            self.message(msg_to_show, level=Qgis.MessageLevel.Critical, duration=10)
+            self.on_reload.emit(True)
 
     def afterModify(self, data: dict):
         if data.get("error"):

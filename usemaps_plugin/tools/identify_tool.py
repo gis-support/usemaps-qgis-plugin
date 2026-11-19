@@ -50,7 +50,7 @@ class UsemapsIdentifyTool(QgsMapToolIdentify):
         if not layer or layer.type() != QgsMapLayer.VectorLayer or e.button() != Qt.MouseButton.LeftButton or layer not in self.canvas.layers():
             return
 
-        results = self.identify(e.x(), e.y(), [layer], self.TopDownStopAtFirst)
+        results = self.identify(e.originalPixelPoint().x(), e.originalPixelPoint().y(), [layer], self.TopDownStopAtFirst)
 
         if not results:
             layer.removeSelection()
