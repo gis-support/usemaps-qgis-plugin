@@ -184,6 +184,11 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.proxy_model.setSourceModel(tree_model)
         root_item = tree_model.invisibleRootItem()
 
+        for layer_class in layers_registry.layers.values():
+            if not hasattr(layer_class, 'loading_changed'):
+                continue
+            layer_class.loading_changed.connect(self.update_loading_state)
+
         self.addLayerButton.setEnabled(CONNECTION.current_user.get('is_admin', False) if CONNECTION.current_user else False)
         self.addLayerButton.setToolTip(
             "" if self.addLayerButton.isEnabled() else self.tr("Tylko administrator może dodać nową warstwę do organizacji")
@@ -229,19 +234,45 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         self.refresh_layers()
         self.validate_active_layer(iface.activeLayer())
 
+    def is_loading(self) -> bool:
+        """Sprawdza, czy któraś z warstw wczytuje dane."""
+        return any(
+            getattr(layer_class, 'is_loading', False)
+            for layer_class in layers_registry.layers.values()
+        )
+
+    def update_loading_state(self) -> None:
+        """Odblokowuje przycisk odświeżania, gdy żadna warstwa nie wczytuje już danych."""
+        busy = self.is_loading()
+        self.refreshButton.setEnabled(CONNECTION.is_connected and not busy)
+        self.refreshButton.setToolTip(self.tr('Trwa wczytywanie danych...') if busy else '')
+
+    def block_loading_state(self) -> None:
+        """Blokuje przycisk odświeżania na czas wczytywania danych."""
+        self.refreshButton.setEnabled(False)
+        self.refreshButton.setToolTip(self.tr('Trwa wczytywanie danych...'))
+        self.refreshButton.repaint()
+
     def add_layer_to_map(self, index):
         """
         Dodaje wybraną warstwę/grupę do projektu.
         """
-        item = self.proxy_model.sourceModel().itemFromIndex(self.proxy_model.mapToSource(index))
-        group_data = item.data(Qt.ItemDataRole.UserRole + 2)
+        if self.is_loading():
+            return
 
-        if group_data:
-            layers_registry.loadGroup(group_data)
-        else:
-            layer_class = item.data(Qt.ItemDataRole.UserRole + 1)
-            if layer_class:
-                layer_class.loadLayer()
+        self.block_loading_state()
+        try:
+            item = self.proxy_model.sourceModel().itemFromIndex(self.proxy_model.mapToSource(index))
+            group_data = item.data(Qt.ItemDataRole.UserRole + 2)
+
+            if group_data:
+                layers_registry.loadGroup(group_data)
+            else:
+                layer_class = item.data(Qt.ItemDataRole.UserRole + 1)
+                if layer_class:
+                    layer_class.loadLayer()
+        finally:
+            self.update_loading_state()
 
     def eventFilter(self, obj, event):
         """
@@ -325,14 +356,21 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not CONNECTION.is_connected:
             return
 
-        layers_registry.loadData(True)
-        self.refresh_layers()
+        if self.is_loading():
+            return
 
-        if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
-            self.offers_projects_fetch_config()
+        self.block_loading_state()
+        try:
+            layers_registry.loadData(True)
+            self.refresh_layers()
 
-        if self.tabWidget.isTabVisible(self._DATABOX_TAB_INDEX):
-            self.databox_fetch_layers()
+            if self.tabWidget.isTabVisible(self._PROJECTS_TAB_INDEX):
+                self.offers_projects_fetch_config()
+
+            if self.tabWidget.isTabVisible(self._DATABOX_TAB_INDEX):
+                self.databox_fetch_layers()
+        finally:
+            self.update_loading_state()
 
     # Mapy
 
@@ -439,46 +477,53 @@ class MainDockWidget(QtWidgets.QDockWidget, FORM_CLASS, Logger):
         if not project_info:
             return
 
-        res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
-
-        if not res or not res.get('data', {}).get('layers'):
-            self.message(self.tr("Mapa nie zawiera żadnych warstw lub wystąpił błąd."), level=Qgis.Warning)
+        if self.is_loading():
             return
 
-        # Tworzenie głównej grupy projektu w QGIS
-        root_group = QgsProject.instance().layerTreeRoot().addGroup(project_info['name'])
+        self.block_loading_state()
+        try:
+            res = CONNECTION.get(f"/api/v2/projects/{project_info['id']}", sync=True)
 
-        def process_items(items, parent_group):
-            """Funkcja tworząca podgrupy i ładująca warstwy."""
-            if not isinstance(items, list):
+            if not res or not res.get('data', {}).get('layers'):
+                self.message(self.tr("Mapa nie zawiera żadnych warstw lub wystąpił błąd."), level=Qgis.Warning)
                 return
 
-            for item in items:
-                children = item.get('layers') or item.get('children')
+            # Tworzenie głównej grupy projektu w QGIS
+            root_group = QgsProject.instance().layerTreeRoot().addGroup(project_info['name'])
 
-                if children is not None:
-                    sub_group = parent_group.addGroup(item.get('name', 'Grupa'))
-                    process_items(children, sub_group)
-                    sub_group.setItemVisibilityChecked(
-                        item.get('visible', True) and any(child.isVisible() for child in sub_group.children())
-                    )
-                else:
-                    if not item.get('id') or item.get('layer_type') == 'mvt':
-                        continue
+            def process_items(items, parent_group):
+                """Funkcja tworząca podgrupy i ładująca warstwy."""
+                if not isinstance(items, list):
+                    return
 
-                    l_class = (layers_registry.layers.get(item.get('id')) or
-                               layers_registry.layers.get(str(item.get('id'))) or
-                               layers_registry.layers.get(int(item.get('id')) if str(item.get('id')).isdigit() else None))
+                for item in items:
+                    children = item.get('layers') or item.get('children')
 
-                    if l_class:
-                        node = l_class.loadLayer(group=parent_group, overridden_style_web=item.get('style'))
-                        if node:
-                            node.setItemVisibilityChecked(item.get('visible', True))
+                    if children is not None:
+                        sub_group = parent_group.addGroup(item.get('name', 'Grupa'))
+                        process_items(children, sub_group)
+                        sub_group.setItemVisibilityChecked(
+                            item.get('visible', True) and any(child.isVisible() for child in sub_group.children())
+                        )
                     else:
-                        self.log(f"Nie znaleziono definicji warstwy o ID: {item.get('id')}")
+                        if not item.get('id') or item.get('layer_type') == 'mvt':
+                            continue
 
-        process_items(res['data'].get('layers', []), root_group)
-        self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)
+                        l_class = (layers_registry.layers.get(item.get('id')) or
+                                   layers_registry.layers.get(str(item.get('id'))) or
+                                   layers_registry.layers.get(int(item.get('id')) if str(item.get('id')).isdigit() else None))
+
+                        if l_class:
+                            node = l_class.loadLayer(group=parent_group, overridden_style_web=item.get('style'))
+                            if node:
+                                node.setItemVisibilityChecked(item.get('visible', True))
+                        else:
+                            self.log(f"Nie znaleziono definicji warstwy o ID: {item.get('id')}")
+
+            process_items(res['data'].get('layers', []), root_group)
+            self.message(self.tr("Zaimportowano mapę: {}").format(project_info['name']), duration=3)
+        finally:
+            self.update_loading_state()
 
     # Projekty
 
