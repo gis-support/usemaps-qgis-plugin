@@ -5,7 +5,8 @@ from owslib.wms import WebMapService
 from owslib.wfs import WebFeatureService
 from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.PyQt.QtCore import QUrl, QCoreApplication
-from typing import Union
+from typing import Optional, Tuple, Union
+import base64
 
 try:
     import defusedxml.ElementTree as et
@@ -22,11 +23,14 @@ class CapabilitiesConnectionException(Exception):
             self.code = code
             super().__init__(*args, **kwargs)
 
-def get_capabilities(url: str, service_type: str) -> Union[WebMapService, WebFeatureService]:
+def get_capabilities(url: str, service_type: str, credentials: Optional[Tuple[str, str]] = None) -> Union[WebMapService, WebFeatureService]:
     manager = QgsNetworkAccessManager()
 
     request_url = f'{url}?service={service_type}&request=GetCapabilities'
     request = QNetworkRequest(QUrl(request_url))
+    if credentials:
+        token = base64.b64encode(':'.join(credentials).encode('utf-8'))
+        request.setRawHeader(b'Authorization', b'Basic ' + token)
     reply = manager.blockingGet(request)
 
     if reply.error() != QNetworkReply.NetworkError.NoError or not reply.content():
