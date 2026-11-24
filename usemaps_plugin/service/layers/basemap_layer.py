@@ -1,11 +1,14 @@
 #coding: UTF-8
 
+from urllib.parse import quote
+
 from qgis.core import QgsProject, QgsRasterLayer, QgsLayerTreeLayer, Qgis
 from qgis.utils import iface
 
 from requests.exceptions import MissingSchema, ConnectionError
 
 from ...tools.capabilities import CapabilitiesConnectionException, get_capabilities
+from ...tools.connection import CONNECTION
 from .base_layer import BaseLayer
 
 
@@ -36,7 +39,8 @@ class BaseMapLayer(BaseLayer):
 
     def wmtsUrl(self):
         """ Budowanie adresu dla WMTS """
-        cap = get_capabilities(self.url, 'WMTS')
+        credentials = self.getCredentials()
+        cap = get_capabilities(self.url, 'WMTS', credentials)
 
         layer = cap.contents[self.service_layers_names]
 
@@ -47,11 +51,12 @@ class BaseMapLayer(BaseLayer):
         if 'mapy.geoportal.gov.pl' in self.url:
             # Geoportal oczywiście musi mieć własne rozkminy
             url += '?service%3Dwmts%26request%3DgetCapabilities'
-        return url
+        return url + self.getAuthParams(credentials)
 
     def wmsUrl(self):
         """ Budowanie adresu dla WMS """
-        cap = get_capabilities(self.url, 'WMS')
+        credentials = self.getCredentials()
+        cap = get_capabilities(self.url, 'WMS', credentials)
         names = self.service_layers_names.split(',')
         layer = cap.contents[names[0]]
         crs = self.getCrs(layer.crsOptions)
@@ -61,7 +66,25 @@ class BaseMapLayer(BaseLayer):
         layer_format = self.getFormat(
             cap.getOperationByName('GetMap').formatOptions)
         url = f'contextualWMSLegend=0&crs={crs}&dpiMode=7&featureCount=10&format={layer_format}&layers={layers}&styles={styles}&url={self.url}'
-        return url
+        return url + self.getAuthParams(credentials)
+
+    def getCredentials(self):
+        """ Pobranie loginu i hasła do usługi """
+        try:
+            auth = CONNECTION.get(f'/api/v2/service-layers/{self.id}/auth', sync=True).get('data') or {}
+        except Exception:
+            # Serwer nie obsługuje autoryzacji warstw
+            return None
+        if auth.get('method') != 'basic':
+            return None
+        return auth.get('user', ''), auth.get('password', '')
+
+    def getAuthParams(self, credentials):
+        """ Dodanie loginu i hasła do adresu warstwy """
+        if not credentials:
+            return ''
+        user, password = credentials
+        return f"&username={quote(user, safe='')}&password={quote(password, safe='')}"
 
     def getEpsg(self, parameters):
         """ Układ współrzędnych """
