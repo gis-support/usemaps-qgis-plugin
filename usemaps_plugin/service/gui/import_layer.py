@@ -5,7 +5,7 @@ from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 from qgis.PyQt.QtCore import Qt, QCoreApplication
 from qgis.PyQt.QtNetwork import QHttpMultiPart, QHttpPart, QNetworkRequest, QNetworkReply
 from qgis.utils import iface
-from qgis.core import QgsMapLayerProxyModel, QgsJsonExporter
+from qgis.core import QgsMapLayerProxyModel, QgsJsonExporter, QgsProject
 
 from ...tools.connection import CONNECTION
 from .adaptive_palette import apply_adaptive_palette
@@ -24,7 +24,22 @@ class ImportLayerDialog(QDialog, FORM_CLASS):
         self.cancel_button.clicked.connect(self.hide)
         self.add_button.clicked.connect(self.upload_to_usemaps)
 
+        QgsProject.instance().layersAdded.connect(self.hide_layers_outside_legend)
+        QgsProject.instance().layerTreeRoot().addedChildren.connect(self.hide_layers_outside_legend)
+
         apply_adaptive_palette(self)
+
+    def showEvent(self, event):
+        self.hide_layers_outside_legend()
+        super().showEvent(event)
+
+    def hide_layers_outside_legend(self, *args):
+        """ Ukrycie warstw spoza legendy """
+        root = QgsProject.instance().layerTreeRoot()
+        self.layer_combobox.setExceptedLayerList([
+            layer for layer in QgsProject.instance().mapLayers().values()
+            if not root.findLayer(layer.id())
+        ])
 
     def upload_to_usemaps(self):
         """ Przesyła warstwę do Usemaps jako GeoJSON. """
