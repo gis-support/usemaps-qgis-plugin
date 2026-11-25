@@ -1,3 +1,9 @@
+1.6
+Added support for changing the color and stroke width of markers in point layers
+Improved stability on Windows systems
+Fixed duplicate objects being created when loading layers
+Added support for default layer attribute values
+
 1.5
 Added support for Data.Box layers – Classification Contours
 Improved handling of table structure changes
